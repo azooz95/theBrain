@@ -2,7 +2,15 @@
 let your office talk
 
 
-# project structure
+## Main Technology 
+
+- Python 3.12
+- Mulvius
+- langgraph
+- Gemini API
+- google workspace (Email, Calander)
+
+## project structure
 
 to install dependencies
 
