@@ -5,10 +5,10 @@ let your office talk
 ## Main Technology 
 
 - Python 3.12
-- Mulvius
-- langgraph
+- Milvus
+- LangGraph
 - Gemini API
-- google workspace (Email, Calander)
+- Google Workspace (Email, Calander)
 
 ## project structure
 
