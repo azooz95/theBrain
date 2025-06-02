@@ -1,7 +1,7 @@
 import os
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from agents.testContract import ContractGenerator
+from src.smart_graph.agents.testContract import ContractGenerator
 
 @tool
 def create_contract(input: dict) -> ToolMessage:

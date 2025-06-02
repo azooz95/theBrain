@@ -1,0 +1,57 @@
+import jwt
+import datetime
+from jwt import PyJWTError as JWTError
+
+from fastapi import Depends, HTTPException, status, FastAPI
+from fastapi.security import OAuth2PasswordBearer
+
+app = FastAPI()
+
+SECRET_KEY = "joe brain"
+FAKE_USER = {
+    "username": "admin",
+    "email": "aziz.alhaj30@gmail.com",
+    "user_id": "1"
+}
+
+ALGORITHM = "HS256"
+DEFAULT_EXPIRATION_HOURS = 24
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+def generate_token(user_id, expiration_hours=DEFAULT_EXPIRATION_HOURS):
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=expiration_hours)
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    return token
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("user_id")
+        if username != FAKE_USER["user_id"]:
+            raise HTTPException(status_code=401, detail="Invalid user")
+        return username
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+@app.get("/users")
+def read_users_me(current_user: str = Depends(get_current_user)):
+    return {"user_id": current_user, "email": FAKE_USER["email"]}
+
+if __name__ == "__main__":
+    user_id = "1"  # Example
+    token = generate_token(user_id)
+    print(f"Generated JWT Token for user {user_id}: {token}")
+
+    # decode_token = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+    # print(f"Decoded Token: {decode_token}")
+
+    import uvicorn
+    uvicorn.run(app, host="localhost", port=8000)

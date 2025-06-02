@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "theBrain"
 version = "0.1.0"
-description = "My FastAPI Project"
+description = "Let your office talk"
 authors = [{name = "Smart Solution Departments", email = "aabdoh@joe13th.com"}]
 readme = "README.md"
 requires-python = ">=3.12"
@@ -81,5 +81,5 @@ Homepage = "https://github.com/azooz95/theBrain"
 index-url = "https://download.pytorch.org/whl/cu118"
 
 [tool.setuptools]
-packages = ["app"]
+packages = ["smart_graph"]
 package-dir = {"" = "src"}

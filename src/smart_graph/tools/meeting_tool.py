@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from agents.testSmartScheduale import MeetingSchedulingAgent
+from src.smart_graph.agents.testSmartScheduale import MeetingSchedulingAgent
 
 @tool
 def schedule_meeting(input: str) -> ToolMessage:

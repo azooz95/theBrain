@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 from langgraph.graph import Graph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import AIMessage, ToolMessage
-from utils.state import AgentState
-from tools.contract_tool import create_contract
-from tools.meeting_tool import schedule_meeting
+from src.smart_graph.utils.state import AgentState
+from src.smart_graph.tools.contract_tool import create_contract
+from src.smart_graph.tools.meeting_tool import schedule_meeting
 
 # Load .env for Gemini key
 load_dotenv()
@@ -78,7 +78,7 @@ def call_model(state: AgentState) -> AgentState:
             ]
         }
 
-    elif "create_contract" in intent:
+    elif "create_contract" in intent:  
         return {
             "messages": messages + [
                 AIMessage(
