@@ -56,26 +56,26 @@ async def websocket_chat(websocket: WebSocket):
         user = check_token(token_value)
 
     except HTTPException as e:
-        await websocket.send_text(f"❌ Invalid token: {e.detail}")
+        await websocket.send_text(f"Invalid token: {e.detail}")
         await websocket.close(code=1008)
-        print(f"⚠️ Invalid token: {e.detail}")
+        print(f"Invalid token: {e.detail}")
         return
     
     except Exception as e:
-        await websocket.send_text(f"❌ Error checking token: {str(e)}")
+        await websocket.send_text(f"Error checking token: {str(e)}")
         await websocket.close(code=1008)
-        print(f"⚠️ Error checking token: {e}")
+        print(f"Error checking token: {e}")
         return
 
     try:
         await websocket.accept()
-        await websocket.send_text(f"✅ Authenticated as {user['username']}")
+        await websocket.send_text(f"Authenticated as {user['username']}")
 
         while True:
             data = await websocket.receive_text()
 
             if not data.strip():
-                await websocket.send_text("❌ Empty message")
+                await websocket.send_text("Empty message")
                 continue
 
             inputs = {"messages": [HumanMessage(content=data)]}
@@ -95,7 +95,7 @@ async def websocket_chat(websocket: WebSocket):
 
     except Exception as e:
         print(f"⚠️ Error: {e}")
-        await websocket.send_text(f"❌ Error: {str(e)}")
+        await websocket.send_text(f"Error: {str(e)}")
         if websocket.client_state != WebSocketState.DISCONNECTED:
             await websocket.close()
 
