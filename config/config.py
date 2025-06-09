@@ -29,9 +29,14 @@ class FilePaths():
         self.google_token_path = str(self.google_token_path)
 
 
-class Ports(BaseModel):
+@dataclass
+class Ports():
     google_local_server: int = 3000
      
 file_paths = FilePaths()
 
 
+
+if __name__ == "__main__":
+
+    print(Ports.google_local_server)

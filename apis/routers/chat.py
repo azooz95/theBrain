@@ -11,6 +11,7 @@ from starlette.websockets import WebSocketState
 from src.smart_graph.graph.main_graph import app as graph_app
 
 app = FastAPI()
+
 class ChatRequest(BaseModel):
     message: str
 
