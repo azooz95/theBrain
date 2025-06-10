@@ -27,5 +27,5 @@ you can find any model in this [google drive link](https://drive.google.com/driv
 
 To run the project api
 ```
-uvicorn apis.main:app --reload
+uvicorn apis.main:app --reload --port 8000
 ```

@@ -1,6 +1,14 @@
+import os 
+from dotenv import load_dotenv
+
 from pathlib import Path
 from dataclasses import dataclass
-import os 
+
+from pydantic import BaseModel
+
+load_dotenv()
+
+GOOGLE_CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
 
 @dataclass
 class FilePaths():
@@ -9,8 +17,8 @@ class FilePaths():
     paper_seg_model : str = script_path.parents[1] / model_folder / 'similified_model_paper_seg.onnx'
     data_base_path: str = script_path.parents[1] / 'src/assests/data/'
     milvus_db_path: str = script_path.parents[1] / 'db/milvus_demo.db/'
-    google_crenditials_path: str = script_path.parents[1] / 'src/credentials/credentials.json'
-    google_token_path: str = script_path.parents[1] / 'src/credentials/token.json'
+    google_crenditials_path: str = script_path.parents[1] / GOOGLE_CREDENTIALS_PATH
+    google_token_path: str = script_path.parents[1] / 'src/assets/google workspace/token.json'
 
     def __post_init__(self):
         self.script_path = str(self.script_path)
@@ -20,4 +28,15 @@ class FilePaths():
         self.google_crenditials_path = str(self.google_crenditials_path)
         self.google_token_path = str(self.google_token_path)
 
+
+@dataclass
+class Ports():
+    google_local_server: int = 3000
+     
 file_paths = FilePaths()
+
+
+
+if __name__ == "__main__":
+
+    print(Ports.google_local_server)
