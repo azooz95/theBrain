@@ -76,7 +76,7 @@ async def websocket_chat(websocket: WebSocket):
             data = await websocket.receive_text()
 
             if not data.strip():
-                await websocket.send_text("Empty message Found")
+                await websocket.send_text("Empty message")
                 continue
 
             inputs = {"messages": [HumanMessage(content=data)]}
