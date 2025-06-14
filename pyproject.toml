@@ -51,6 +51,8 @@ dependencies = [
     "google-generativeai",
     "slack_sdk",
     "trello",
+    "pyjwt",
+
     
 
 ]
