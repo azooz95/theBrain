@@ -21,4 +21,4 @@ app.include_router(chat_router, prefix="/api", tags=["chat"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="localhost", port=8000)
+    uvicorn.run(app, host="localhost", port=8000, --app-dir=/www/wwwroot/joe_brain_ai)
