@@ -23,7 +23,7 @@ class GraphPrompts:
         )
         return FORMAT_PROMOT({"input": input, "classification":classification}, promot_template)
 
-
+# 
 class RunPromots: 
 
     @staticmethod
