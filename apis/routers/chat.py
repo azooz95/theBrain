@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from fastapi import APIRouter, Depends, HTTPException, FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from apis.token_generator import get_current_user, check_token
+from apis.token_generator import get_current_user, verify_token
 from starlette.websockets import WebSocketState
 
 from src.smart_graph.graph.main_graph import app as graph_app
@@ -54,7 +54,7 @@ async def websocket_chat(websocket: WebSocket):
     token_value = token.replace("Bearer ", "")
 
     try: 
-        user = check_token(token_value)
+        user = verify_token(token_value)
 
     except HTTPException as e:
         await websocket.send_text(f"Invalid token: {e.detail}")
@@ -63,9 +63,9 @@ async def websocket_chat(websocket: WebSocket):
         return
     
     except Exception as e:
-        await websocket.send_text(f"Error checking token: {str(e)}")
+        await websocket.send_text(f"Error verify token: {str(e)}")
         await websocket.close(code=1008)
-        print(f"Error checking token: {e}")
+        print(f"Error verify token: {e}")
         return
 
     try:

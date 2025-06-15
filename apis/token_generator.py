@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 app = FastAPI()
 
-SECRET_KEY = "joe brain"
+SECRET_KEY = "JWT_brain_BE_SECRETTS"
 FAKE_USER = {
     "username": "admin",
     "email": "aziz.alhaj30@gmail.com",
@@ -31,7 +31,7 @@ def generate_token(user_data, expiration_hours=DEFAULT_EXPIRATION_HOURS):
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], verify=True)
         username: str = payload.get("user_id")
         if username != FAKE_USER["user_id"]:
             raise HTTPException(status_code=401, detail="Invalid user")
@@ -43,9 +43,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-def check_token(token: str = Depends(oauth2_scheme)):
+def verify_token(token: str = Depends(oauth2_scheme)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
         return payload
     except JWTError:
         raise HTTPException(
@@ -59,9 +59,12 @@ def read_users_me(current_user: str = Depends(get_current_user)):
     return {"user_id": current_user, "email": FAKE_USER["email"]}
 
 if __name__ == "__main__":
-    user_id = "1"  # Example
+    pass
+    # user_id = "1"  # Example
     token = generate_token(FAKE_USER)
-    print(f"Generated JWT Token for user {user_id}: {token}")
+    print(token)
+    print(f"Generated JWT Token for user: {token}")
+    print(verify_token(token))
 
     # decode_token = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
     # print(f"Decoded Token: {decode_token}")
