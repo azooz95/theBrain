@@ -27,4 +27,4 @@ app.include_router(chat_router, prefix="/api", tags=["chat"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="localhost", port=8000, ) # to run muli process add workers=4
+    uvicorn.run(app, host="localhost", port=8000) # to run muli process add workers=4
