@@ -2,7 +2,7 @@
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda
-
+from langchain_core.output_parsers import JsonOutputParser
 
 FORMAT_PROMOT = lambda veriables, promot_template: promot_template.format(**veriables)
 
