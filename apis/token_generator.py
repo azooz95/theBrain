@@ -31,11 +31,8 @@ def generate_token(user_data, expiration_hours=DEFAULT_EXPIRATION_HOURS):
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], verify=True)
-        username: str = payload.get("user_id")
-        if username != FAKE_USER["user_id"]:
-            raise HTTPException(status_code=401, detail="Invalid user")
-        return username
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_sub": False})
+        return payload
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
