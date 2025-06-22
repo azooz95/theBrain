@@ -72,7 +72,7 @@ async def websocket_chat(websocket: WebSocket):
 
     try:
         await websocket.accept()
-        await websocket.send_text(f"Authenticated as {user['username']}")
+        await websocket.send_text(f"Authenticated as {user}")
 
         while True:
             data = await websocket.receive_text()
