@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apis.routers.chat import router as chat_router
+from apis.routers.document import router as document_router
 
 app = FastAPI()
 
@@ -21,6 +22,7 @@ app.add_middleware(
 
 # Include the chat router
 app.include_router(chat_router, prefix="/api", tags=["chat"])
+app.include_router(document_router, prefix="/api", tags=["document"])
 
 if __name__ == "__main__":
     import uvicorn
