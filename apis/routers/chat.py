@@ -4,7 +4,7 @@
 from langchain_core.messages import HumanMessage, AIMessage
 
 from fastapi import APIRouter, Depends, HTTPException, FastAPI, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel,ConfigDict
 from apis.token_generator import get_current_user, verify_token
 from starlette.websockets import WebSocketState
 
@@ -15,15 +15,17 @@ app = FastAPI()
 class ChatRequest(BaseModel):
     message: str
 
+    model_config = ConfigDict(extra='forbid')
+
 
 router = APIRouter()
 
 @router.post("/chat")
-async def chat_endpoint(request: ChatRequest, user_id: str = Depends(get_current_user)):
+async def chat_endpoint(request: ChatRequest, user_info: str = Depends(get_current_user)):
 
     if not request.message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    
+
 
     user_input = request.message
 
@@ -34,9 +36,9 @@ async def chat_endpoint(request: ChatRequest, user_id: str = Depends(get_current
                 messages = val["messages"]
                 if isinstance(messages, list) and messages:
                     print(f"\n🤖 {messages[-1].content}\n")
-                    return {"response": messages[-1].content, "user_id": user_id}
+                    return {"response": messages[-1].content, "user_id": user_info}
 
-    return {"response": f"Received message: {request.message}, user_id: {user_id}"}
+    return {"response": f"Received message: {request.message}, user_id: {user_info}"}
 
 
 @router.websocket("/ws/chat")
