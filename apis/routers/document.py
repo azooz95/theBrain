@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel,ConfigDict
 
 class DocumentEmbedding(BaseModel):
+    id: int
+    folderId: int
     urls: list[str]
-
+    
     model_config = ConfigDict(extra='forbid')
 
 router = APIRouter()
