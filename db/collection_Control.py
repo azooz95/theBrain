@@ -92,7 +92,7 @@ def login_user(email, password):
 
 # -------- DOCUMENT FUNCTIONS -------- #
 
-def insert_document(text, file_name, file_format, summary, category):
+def insert_document(text, file_name, file_format, summary, category, user_id, folder_id):
     if not all([text, file_name, file_format]):
         print("❌ Missing required document fields.")
         return
