@@ -1,37 +1,54 @@
-# document_control.py
-
 import os
 from datetime import datetime
 from dotenv import load_dotenv
-from pymilvus import Collection
+from pymilvus import Collection, connections, utility
 from langchain_milvus import Milvus
 from embedder import embedding_model
 import bcrypt
-from pymilvus import Collection, connections
+from functools import wraps
 
 # Load environment variables
 load_dotenv()
 
-# Separate vector stores
+# Initialize Milvus vector stores
 user_store = Milvus(
     embedding_function=embedding_model,
     collection_name="user_profiles",
-    connection_args={
-        "uri": os.environ["MILVUS_URI"],
-        "token": os.environ["MILVUS_TOKEN"]
-    },
+    connection_args={"uri": os.environ["MILVUS_URI"], "token": os.environ["MILVUS_TOKEN"]},
     index_params={"index_type": "FLAT", "metric_type": "L2"},
 )
 
 document_store = Milvus(
     embedding_function=embedding_model,
     collection_name="document_embeddings",
-    connection_args={
-        "uri": os.environ["MILVUS_URI"],
-        "token": os.environ["MILVUS_TOKEN"]
-    },
+    connection_args={"uri": os.environ["MILVUS_URI"], "token": os.environ["MILVUS_TOKEN"]},
     index_params={"index_type": "FLAT", "metric_type": "L2"},
 )
+
+# -------- Decorator -------- #
+def require_collections(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            connections.connect(
+                alias="default",
+                uri=os.environ["MILVUS_URI"],
+                token=os.environ["MILVUS_TOKEN"]
+            )
+        except:
+            return {"success": False, "message": "❌ Failed to connect to Milvus."}
+
+        expected = {"user_profiles", "document_embeddings"}
+        existing = set(utility.list_collections())
+
+        if not expected.issubset(existing):
+            return {"success": False,
+                    "message": "❌ Required collections are missing."}
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
 
 # -------- USER FUNCTIONS -------- #
 
@@ -41,16 +58,14 @@ def _generate_user_vector(profile_text="default user"):
     except:
         return [0.1] * 768
 
+@require_collections
 def register_user(username, email, password, profile_desc="default user"):
     if not all([username, email, password]):
-        print("❌ Username, email, and password are required.")
-        return
+        return {"success": False, "message": "Username, email, and password are required."}
 
-    # Check if email already exists
     results = user_store.similarity_search(f"user profile for {email}", k=1)
     if results and results[0].metadata.get("email") == email:
-        print("❌ Email already registered.")
-        return
+        return {"success": False, "message": "Email already registered."}
 
     vector = _generate_user_vector(profile_desc)
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode("utf-8")
@@ -63,39 +78,46 @@ def register_user(username, email, password, profile_desc="default user"):
     }
 
     user_store.add_texts([f"user profile for {email}"], metadatas=[metadata])
-    print(f"✅ User '{username}' registered.")
+    return {"success": True, "message": f"User '{username}' registered."}
 
+@require_collections
 def login_user(email, password):
     if not all([email, password]):
-        print("❌ Email and password are required.")
-        return None
+        return {"success": False, "message": "Email and password are required."}
 
     results = user_store.similarity_search(f"user profile for {email}", k=1)
     if not results:
-        print("❌ User not found.")
-        return None
+        return {"success": False, "message": "User not found."}
 
     metadata = results[0].metadata
     stored_email = metadata.get("email")
     stored_hash = metadata.get("password_hash")
 
-    if stored_email != email:
-        print("❌ Email mismatch.")
-        return None
+    if stored_email != email or not bcrypt.checkpw(password.encode(), stored_hash.encode()):
+        return {"success": False, "message": "Incorrect email or password."}
 
-    if not stored_hash or not bcrypt.checkpw(password.encode(), stored_hash.encode()):
-        print("❌ Incorrect password.")
-        return None
+    # Get user ID (if available)
+    connections.connect(
+        alias="default",
+        uri=os.environ["MILVUS_URI"],
+        token=os.environ["MILVUS_TOKEN"]
+    )
+    collection = Collection("user_profiles")
+    collection.load()
+    result = collection.query(
+        expr=f'email == "{email}"',
+        output_fields=["email"]
+    )
+    user_id = email  # fallback to email as identifier
 
-    print(f"✅ Login successful for {metadata.get('username')}")
-    return metadata
+    return {"success": True, "id": user_id, **metadata}
 
 # -------- DOCUMENT FUNCTIONS -------- #
 
+@require_collections
 def insert_document(text, file_name, file_format, summary, category, user_id, folder_id):
-    if not all([text, file_name, file_format]):
-        print("❌ Missing required document fields.")
-        return
+    if not all([text, file_name, file_format, user_id, folder_id]):
+        return {"success": False, "message": "Missing required document fields."}
 
     vector = embedding_model.embed_query(text)
     metadata = {
@@ -103,18 +125,19 @@ def insert_document(text, file_name, file_format, summary, category, user_id, fo
         "file_format": file_format,
         "summary": summary,
         "category": category,
-        "date": datetime.now().isoformat()
+        "date": datetime.now().isoformat(),
+        "user_id": str(user_id),
+        "folder_id": str(folder_id)
     }
 
     document_store.add_texts([text], metadatas=[metadata])
-    print(f"✅ Document '{file_name}' inserted.")
+    return {"success": True, "message": f"Document '{file_name}' inserted."}
 
+@require_collections
 def search_by_filename(file_name):
     if not file_name:
-        print("❌ Filename is required.")
         return []
 
-    # ✅ Connect to Milvus before querying
     connections.connect(
         alias="default",
         uri=os.environ["MILVUS_URI"],
@@ -126,16 +149,16 @@ def search_by_filename(file_name):
 
     results = collection.query(
         expr=f'file_name == "{file_name}"',
-        output_fields=["file_name", "summary", "category", "date"]
+        output_fields=["file_name", "summary", "category", "date", "user_id", "folder_id"]
     )
 
     return results
 
+@require_collections
 def delete_document(file_name):
     if not file_name:
-        print("❌ Filename is required.")
-        return
+        return {"success": False, "message": "Filename is required."}
 
     collection = Collection(name="document_embeddings")
     collection.delete(expr=f'file_name == "{file_name}"')
-    print(f"🗑️ Document '{file_name}' deleted.")
+    return {"success": True, "message": f"Document '{file_name}' deleted."}
