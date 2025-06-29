@@ -3,33 +3,52 @@ from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 from src.smart_graph.agents.testContract import ContractGenerator
 
+# Temporary cache for placeholders/questions (in production use a DB or session store)
+PLACEHOLDER_CACHE = {}
+
 @tool
-def create_contract(input: dict) -> ToolMessage:
+def create_contract(
+    mode: str = "",
+    template_path: str = "",
+    answers: dict = None,
+    excel_path: str = ""
+) -> ToolMessage:
     """
-    Create a single or multiple contract from uploaded template and structured input.
-
-    Expected `input`:
-    {
-        "mode": "single" | "multiple",
-        "template_path": "path/to/template.docx",
-        "answers": {placeholder: answer, ...},  # optional, for 'single'
-        "excel_path": "path/to/excel.xlsx"       # optional, for 'multiple'
-    }
+    Create a contract using a DOCX template. Defaults to 'single' mode if not specified.
     """
 
-    mode = input.get("mode", "").lower()
-    template_path = input.get("template_path")
+    # ✅ Default to single mode
+    mode = (mode or "single").lower().strip()
 
-    if not mode or mode not in ["single", "multiple"]:
+    if mode not in ["single", "multiple"]:
         return ToolMessage(
-            content="❓ Please specify whether you want to create a `single` or `multiple` contracts.",
+            content="❓ Invalid mode. Please use 'single' or 'multiple'.",
             name="create_contract",
             tool_call_id="tool_call_create_contract"
         )
 
-    if not template_path or not os.path.exists(template_path):
+    # ✅ Auto-pick latest uploaded .docx if path not given
+    if not template_path:
+        try:
+            uploads = sorted(
+                [f for f in os.listdir("uploads") if f.endswith(".docx")],
+                key=lambda x: os.path.getctime(os.path.join("uploads", x)),
+                reverse=True
+            )
+            if uploads:
+                template_path = os.path.join("uploads", uploads[0])
+            else:
+                raise FileNotFoundError
+        except:
+            return ToolMessage(
+                content="📄 I need a `.docx` contract template to proceed. Please upload it.",
+                name="create_contract",
+                tool_call_id="tool_call_create_contract"
+            )
+
+    if not os.path.exists(template_path):
         return ToolMessage(
-            content="📂 Please upload a valid `.docx` template and provide its path as `template_path`.",
+            content="❌ The provided `template_path` does not exist. Please double-check the file path.",
             name="create_contract",
             tool_call_id="tool_call_create_contract"
         )
@@ -37,41 +56,42 @@ def create_contract(input: dict) -> ToolMessage:
     generator = ContractGenerator(template_path=template_path)
 
     if mode == "single":
-        answers = input.get("answers")
-
         if not answers:
-            # Step 1: Extract placeholders and questions
             placeholders = generator.extract_placeholders()
             questions = generator.generate_questions()
 
+            friendly_questions = list(questions.values())
+            ordered_fields = list(questions.keys())
+
+            # Cache fields for next interaction
+            PLACEHOLDER_CACHE[template_path] = ordered_fields
+
+            prompt = "📝 Please answer the following questions **in one message**, separated by commas:\n\n"
+            for i, q in enumerate(friendly_questions, 1):
+                prompt += f"{i}. {q}\n"
+            prompt += (
+                "\n📌 Example: `2025-06-24, John Doe, Jane Smith, Business Plan, 2 years`\n"
+                "⏳ Waiting for your response..."
+            )
+
             return ToolMessage(
-                content="📝 I need your answers to the following fields:\n" +
-                        "\n".join([f"- {ph}: {q}" for ph, q in questions.items()]) +
-                        "\n\nPlease respond with a JSON like:\n```json\n{\"answers\": {\"PLACEHOLDER1\": \"value1\", ...}}\n```",
+                content=prompt,
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
             )
 
-        # Step 2: Fill contract
         generator.extract_placeholders()
         generator.fill_placeholders(answers)
         generator.export_responses_pdf()
 
         return ToolMessage(
-            content=(
-                f"✅ Contract created!\n\n"
-                f"📄 DOCX: `{generator.docx_output}`\n"
-                f"📑 PDF: `{generator.pdf_output}`"
-            ),
+            content=f"✅ Contract created!\n📄 DOCX: `{generator.docx_output}`\n📑 PDF: `{generator.pdf_output}`",
             name="create_contract",
             tool_call_id="tool_call_create_contract"
         )
 
     elif mode == "multiple":
-        excel_path = input.get("excel_path")
-
         if not excel_path:
-            # Step 1: extract and send Excel template
             generator.extract_placeholders()
             excel_template = generator.prepare_excel_template()
 
@@ -79,18 +99,20 @@ def create_contract(input: dict) -> ToolMessage:
                 content=(
                     f"📄 Please fill this Excel template with contract data:\n"
                     f"`{excel_template}`\n\n"
-                    "Then re-upload it and provide the path as `excel_path`."
+                    "Then upload it and send:\n"
+                    "```json\n"
+                    "{ \"template_path\": \"...\", \"excel_path\": \"...\" }\n"
+                    "```"
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
             )
 
-        # Step 2: process Excel and generate contracts
         files = generator.generate_bulk_contracts(excel_path)
 
         return ToolMessage(
             content=(
-                f"✅ All {len(files)} contracts have been generated successfully.\n" +
+                f"✅ All {len(files)} contracts were generated successfully.\n" +
                 "\n".join([f"📄 {f}" for f in files])
             ),
             name="create_contract",
