@@ -11,7 +11,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from smart_graph.agents import testContract, full_controled_calender
+from smart_graph.agents import testContract, fu
 # --- Configuration ---
 load_dotenv()
 
