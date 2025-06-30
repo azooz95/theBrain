@@ -1,138 +1,220 @@
+import hashlib
 import os
 import json
+from typing import Dict, List, Optional, TypedDict
+from datetime import datetime
 import google.generativeai as genai
 from dotenv import load_dotenv
-from langgraph.graph import Graph, END
+from langgraph.graph import Graph
 from langgraph.prebuilt import ToolNode
-from langchain_core.messages import AIMessage, ToolMessage
-from src.smart_graph.utils.state import AgentState
-from src.smart_graph.tools.contract_tool import create_contract
-from src.smart_graph.tools.meeting_tool import schedule_meeting
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
+from pydantic import BaseModel
 
-# Load .env for Gemini key
+from smart_graph.agents import testContract, full_controled_calender
+# --- Configuration ---
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-model = genai.GenerativeModel("gemini-2.0-flash")
+class AgentConfig(BaseModel):
+    model_name: str = "gemini-1.5-pro"
+    max_history: int = 10
+    checkpoint_interval: int = 3  # Save state every N interactions
+    enable_memory: bool = True
 
-# Register tool functions
-tools = [create_contract, schedule_meeting]
-tool_node = ToolNode(tools=tools)
+# --- Memory-Enhanced Agent ---
+class AIAgent:
+    def __init__(self, tools: List):
+        self.config = AgentConfig()
+        self.workflow = self._build_workflow(tools)
+        self.memory = MemorySaver()
+        self.session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+    def process(self, user_input: str, thread_id: Optional[str] = None) -> str:
+        """Process input with automatic state checkpointing"""
+        if not thread_id:
+            thread_id = f"thread_{hashlib.sha256(user_input.encode()).hexdigest()[:8]}"
 
-# --- INTENT DETECTION FUNCTION ---
-def call_model(state: AgentState) -> AgentState:
-    messages = state["messages"]
-    user_input = messages[-1].content.strip()
+        # Initialize or load state
+        state = self._get_initial_state(thread_id, user_input)
 
-    # ⚠️ Fallback: direct JSON input implies create_contract
-    if user_input.startswith("{") and user_input.endswith("}"):
+        # Run through workflow
+        for step in self.workflow.stream(
+            state,
+            {"configurable": {"thread_id": thread_id}},
+            stream_mode="values"
+        ):
+            state = step
+
+        # Get final response
+        return state["messages"][-1].content
+
+    def _build_workflow(self, tools: List) -> Graph:
+        """Construct workflow with memory checkpointing"""
+        workflow = Graph()
+
+        # Define nodes
+        workflow.add_node("receive_input", self._receive_input)
+        workflow.add_node("analyze_intent", self._analyze_intent)
+        workflow.add_node("generate_response", self._generate_response)
+        workflow.add_node("execute_tools", ToolNode(tools))
+        workflow.add_node("format_output", self._format_output)
+
+        # Define edges
+        workflow.set_entry_point("receive_input")
+        workflow.add_edge("receive_input", "analyze_intent")
+        workflow.add_edge("format_output", "receive_input")  # Conversation loop
+
+        # Conditional tool execution
+        workflow.add_conditional_edges(
+            "analyze_intent",
+            self._should_use_tools,
+            {
+                "use_tools": "execute_tools",
+                "direct_response": "generate_response"
+            }
+        )
+        workflow.add_edge("execute_tools", "generate_response")
+
+        # Add memory checkpointing
+        workflow.add_node("checkpoint", self._save_checkpoint)
+        workflow.add_edge("generate_response", "checkpoint")
+        workflow.add_edge("checkpoint", "format_output")
+
+        return workflow.compile(
+            checkpointer=MemorySaver(),
+            interrupt_before=["execute_tools"],
+            interrupt_after=["generate_response"]
+        )
+
+    def _get_initial_state(self, thread_id: str, user_input: str) -> Dict:
+        """Get or initialize state with memory"""
+        # Try to load existing state
+        if self.config.enable_memory:
+            try:
+                state = self.memory.get({"configurable": {"thread_id": thread_id}})
+                if state:
+                    return self._update_state(state, user_input)
+            except Exception:
+                pass
+
+        # Initialize new state
+        return {
+            "messages": [
+                SystemMessage(content="You are a helpful AI assistant."),
+                HumanMessage(content=user_input)
+            ],
+            "metadata": {
+                "created_at": datetime.now().isoformat(),
+                "session_id": self.session_id,
+                "interaction_count": 0
+            }
+        }
+
+    def _update_state(self, state: Dict, new_input: str) -> Dict:
+        """Update existing state with new input"""
+        return {
+            "messages": state["messages"] + [HumanMessage(content=new_input)],
+            "metadata": {
+                **state["metadata"],
+                "updated_at": datetime.now().isoformat(),
+                "interaction_count": state["metadata"]["interaction_count"] + 1
+            }
+        }
+
+    def _save_checkpoint(self, state: Dict) -> Dict:
+        """Save state to memory at key points"""
+        if self.config.enable_memory:
+            # Only checkpoint every N interactions
+            if state["metadata"]["interaction_count"] % self.config.checkpoint_interval == 0:
+                self.memory.put(state)
+        return state
+
+    # --- Processing Methods ---
+    def _receive_input(self, state: Dict) -> Dict:
+        """Prepare input for processing"""
+        return state
+
+    def _analyze_intent(self, state: Dict) -> Dict:
+        """Analyze user intent with conversation context"""
+        messages = state["messages"]
+        user_input = messages[-1].content
+
+        prompt = f"""
+        Analyze this conversation context and determine intent:
+        
+        Conversation History:
+        {"".join(m.content for m in messages[:-1])}
+        
+        Current Input:
+        {user_input}
+        
+        Should we use tools or respond directly?
+        """
+        
         try:
-            parsed = json.loads(user_input)
-            if "mode" in parsed and "template_path" in parsed:
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            model = genai.GenerativeModel(self.config.model_name)
+            response = model.generate_content(prompt)
+            
+            return {
+                **state,
+                "intent": json.loads(response.text),
+                "messages": messages
+            }
+        except Exception as e:
+            print(f"Intent analysis error: {e}")
+            return {
+                **state,
+                "intent": {"action": "direct_response"},
+                "messages": messages
+            }
+
+    def _should_use_tools(self, state: Dict) -> str:
+        """Determine next step based on intent"""
+        return state.get("intent", {}).get("action", "direct_response")
+
+    def _generate_response(self, state: Dict) -> Dict:
+        """Generate appropriate response"""
+        messages = state["messages"]
+        
+        if state["intent"]["action"] == "direct_response":
+            try:
+                response = self._call_llm(messages[-1].content)
                 return {
+                    **state,
+                    "messages": messages + [AIMessage(content=response)]
+                }
+            except Exception as e:
+                print(f"Response generation error: {e}")
+                return {
+                    **state,
                     "messages": messages + [
-                        AIMessage(
-                            content="",
-                            tool_calls=[{
-                                "name": "create_contract",
-                                "args": {"input": parsed},
-                                "id": "tool_call_create_contract"
-                            }]
-                        )
+                        AIMessage(content="Sorry, I encountered an error processing your request.")
                     ]
                 }
-        except Exception:
-            pass  # proceed to intent classification
+        
+        # Tool responses are handled by the ToolNode
+        return state
 
-    # --- Gemini Prompt for intent classification ---
-    intent_prompt = f"""
-    Classify this user request into ONE of the following intents:
-    - schedule_meeting
-    - create_contract
-    - general_query
+    def _format_output(self, state: Dict) -> Dict:
+        """Prepare final output"""
+        return state
 
-    If the input looks like a JSON or includes "contract" or "template", assume create_contract.
-    If it includes scheduling, dates, times, or "meeting", assume schedule_meeting.
+    def _call_llm(self, prompt: str) -> str:
+        """Wrapper for LLM calls"""
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel(self.config.model_name)
+        response = model.generate_content(prompt)
+        return response.text
+    
 
-    Input: \"{user_input}\"
-    """
+if __name__ == "__main__":
+    agent = AIAgent(tools=[create_contract, schedule_meeting])
 
-    try:
-        intent = model.generate_content(intent_prompt).text.strip().lower()
-    except Exception:
-        return {"messages": messages + [
-            AIMessage(content="❌ Sorry, I couldn’t understand your request due to a model error. Please try again.")]}
+    # Start new conversation thread
+    response1 = agent.process("Book a meeting for tomorrow at 2pm", thread_id="project_x")
 
-    if "schedule_meeting" in intent:
-        return {
-            "messages": messages + [
-                AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "schedule_meeting",
-                        "args": {"input": user_input},
-                        "id": "tool_call_schedule_meeting"
-                    }]
-                )
-            ]
-        }
+    # Later continue the same thread
+    response2 = agent.process("What meetings do I have scheduled?", thread_id="project_x")
 
-    elif "create_contract" in intent:  
-        return {
-            "messages": messages + [
-                AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "create_contract",
-                        "args": {"input": user_input},
-                        "id": "tool_call_create_contract"
-                    }]
-                )
-            ]
-        }
-
-    # Default to chat completion
-    try:
-        response = model.generate_content(user_input)
-        return {"messages": messages + [AIMessage(content=response.text)]}
-    except Exception:
-        return {"messages": messages + [AIMessage(content="⚠️ Something went wrong while generating a response.")]}
-
-
-# --- CONDITION TO TRIGGER TOOL EXECUTION ---
-def should_continue(state: AgentState) -> str:
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "continue"
-    return "end"
-
-
-# --- TOOL RESPONSE HANDLER ---
-def respond_with_tool_output(state: AgentState) -> AgentState:
-    messages = state["messages"]
-    tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
-
-    if tool_messages:
-        last_output = tool_messages[-1].content
-        return {"messages": messages + [AIMessage(content=last_output)]}
-
-    return {"messages": messages + [AIMessage(content="⚠️ Tool didn’t return anything.")]}
-
-
-# --- BUILD THE GRAPH ---
-workflow = Graph()
-workflow.add_node("agent", call_model)
-workflow.add_node("tools", tool_node)
-workflow.add_node("respond", respond_with_tool_output)
-
-workflow.set_entry_point("agent")
-workflow.add_conditional_edges("agent", should_continue, {
-    "continue": "tools",
-    "end": END
-})
-workflow.add_edge("tools", "respond")
-workflow.add_edge("respond", END)
-
-# --- COMPILE APP ---
-app = workflow.compile()
+    # The agent maintains context between interactions
