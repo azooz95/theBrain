@@ -2,7 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
-from langgraph.graph import Graph, END
+from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import AIMessage, ToolMessage
 from src.smart_graph.utils.state import AgentState
@@ -93,12 +93,12 @@ Now classify ONLY the **latest user message** into ONE of these intents:
 
 Instructions:
 - If the message includes JSON or contract-related terms (contract, template, mode, answers), classify as `create_contract`.
-- If the user recently mentioned contract and now says \"single\", \"multiple\", or gives short answers — it’s still `create_contract`.
+- If the user recently mentioned contract and now says "single", "multiple", or gives short answers — it’s still `create_contract`.
 - If the message includes scheduling, time, participants, or dates — it's `schedule_meeting`.
 - Otherwise, classify as `general_query`.
 
 Only return one word (no explanation): `create_contract`, `schedule_meeting`, or `general_query`.
-User message: \"{user_input}\"
+User message: "{user_input}"
 """
 
     try:
@@ -166,7 +166,7 @@ def respond_with_tool_output(state: AgentState) -> AgentState:
     return {"messages": messages + [AIMessage(content="⚠️ Tool didn’t return anything.")]}
 
 # --- Step 4: Graph definition ---
-workflow = Graph()
+workflow = StateGraph(AgentState)  # ✅ تم إصلاح الخطأ هنا بتمرير AgentState
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", tool_node)
 workflow.add_node("respond", respond_with_tool_output)

@@ -1,5 +1,5 @@
 from langchain_core.messages import HumanMessage, AIMessage
-from src.smart_graph.graph.main_graph import app
+from graph.main_graph import app
 
 def run_assistant():
     print("👋 Hello! I'm your smart assistant. Ask me anything (type 'exit' to quit).")
@@ -16,9 +16,7 @@ def run_assistant():
                 if isinstance(val, dict) and "messages" in val:
                     messages = val["messages"]
                     if isinstance(messages, list) and messages:
-                        for msg in messages:
-                            if isinstance(msg, AIMessage):
-                                print(f"\n🤖 {msg.content}\n")
+                        print(f"\n🤖 {messages[-1].content}\n")
 
 if __name__ == "__main__":
     run_assistant()
