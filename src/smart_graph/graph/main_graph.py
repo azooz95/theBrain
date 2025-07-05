@@ -4,9 +4,9 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
 from src.smart_graph.utils.state import AgentState
-from src.smart_graph.tools.contract_tool import create_contract, PLACEHOLDER_CACHE
+from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
 
 # Load environment and configure Gemini
@@ -18,97 +18,72 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 tools = [create_contract, schedule_meeting]
 tool_node = ToolNode(tools=tools)
 
+# Track recent context
+RECENT_CONTEXT = []
+
 # --- Step 1: Intent Detection Agent ---
 def call_model(state: AgentState) -> AgentState:
     messages = state["messages"]
     user_input = messages[-1].content.strip()
 
-    # Attempt to handle comma-separated contract answers directly
-    if "," in user_input and len(user_input.split(",")) >= 5:
-        try:
-            uploads = os.listdir("uploads")
-            latest_template = sorted(
-                [f for f in uploads if f.endswith(".docx")],
-                key=lambda x: os.path.getctime(os.path.join("uploads", x)),
-                reverse=True
-            )[0]
-            template_path = os.path.join("uploads", latest_template)
+    # Use last 5 message turns as dialogue history
+    dialogue = "\n".join([
+        f"{m.type.upper()}: {m.content.strip()}"
+        for m in messages[-5:] if hasattr(m, "content") and m.content.strip()
+    ])
+    recent_context = dialogue.lower()
+    RECENT_CONTEXT.append(recent_context)
+    RECENT_CONTEXT[:] = RECENT_CONTEXT[-5:]  # Keep it short
 
-            if template_path in PLACEHOLDER_CACHE:
-                fields = PLACEHOLDER_CACHE[template_path]
-            else:
-                from src.smart_graph.agents.testContract import ContractGenerator
-                generator = ContractGenerator(template_path=template_path)
-                fields = generator.extract_placeholders()
-
-            values = [v.strip() for v in user_input.split(",")]
-
-            if len(fields) != len(values):
-                return {"messages": messages + [
-                    AIMessage(content=f"⚠️ Your response does not match the expected number of fields. Expected {len(fields)}, got {len(values)}.")
-                ]}
-
-            parsed_answers = {k: v for k, v in zip(fields, values)}
-            parsed = {
-                "mode": "single",
-                "template_path": template_path,
-                "answers": parsed_answers
-            }
-
-            print("✅ Auto-parsed answers:", parsed_answers)
-
+    # Extra logic: if recent messages already discussed contracts, override classification
+    contract_keywords = ["contract", "template", "docx", "placeholder", "single", "multiple", "once", "batch", "upload"]
+    if any(kw in " ".join(RECENT_CONTEXT).lower() for kw in contract_keywords):
+        if user_input.lower() in ["single", "just one", "once", "one", "1", "multiple", "many", "batch"]:
             return {
                 "messages": messages + [
                     AIMessage(
                         content="",
                         tool_calls=[{
                             "name": "create_contract",
-                            "args": parsed,
+                            "args": {"input": user_input},
                             "id": "tool_call_create_contract"
                         }]
                     )
                 ]
             }
 
-        except Exception as e:
-            print("❌ Parsing error:", str(e))
-            return {"messages": messages + [AIMessage(content="❌ Failed to process your contract answers.")]}
-
-    # --- Build last 5 messages context ---
-    previous_context = "\n".join([
-        f"{m.type.upper()}: {m.content.strip()}" for m in messages[-5:]
-        if hasattr(m, "content") and m.content.strip()
-    ])
-
+    # Prompt Gemini to infer intent
     intent_prompt = f"""
-You are a smart intent classifier for a multi-agent assistant.
+You are an AI assistant that helps route user requests to tools in a multi-agent system.
+
+Your job is to classify the **latest user message** based on the ongoing conversation.
+
+The system supports 3 tools:
+1. `create_contract` → Used when the user wants to generate a contract (single or multiple), upload a template, fill placeholders, etc.
+2. `schedule_meeting` → Used when the user wants to schedule a meeting, specify time, participants, etc.
+3. `general_query` → Everything else: general questions, greetings, or small talk.
 
 Below is the recent conversation:
-{previous_context}
 
-Now classify ONLY the **latest user message** into ONE of these intents:
-- schedule_meeting
+{dialogue}
+
+Now classify the LAST user message ONLY into one of:
 - create_contract
+- schedule_meeting
 - general_query
 
-Instructions:
-- If the message includes JSON or contract-related terms (contract, template, mode, answers), classify as `create_contract`.
-- If the user recently mentioned contract and now says "single", "multiple", or gives short answers — it’s still `create_contract`.
-- If the message includes scheduling, time, participants, or dates — it's `schedule_meeting`.
-- Otherwise, classify as `general_query`.
-
-Only return one word (no explanation): `create_contract`, `schedule_meeting`, or `general_query`.
-User message: "{user_input}"
+Respond with just the tool name, nothing else.
 """
-
     try:
         intent = model.generate_content(intent_prompt).text.strip().lower()
+        print(f"[DEBUG] Intent classified as: {intent}")
     except Exception:
         return {"messages": messages + [
-            AIMessage(content="❌ Sorry, I couldn’t understand your request due to a model error. Please try again.")
+            AIMessage(content="❌ Intent detection failed. Please try again.")
         ]}
 
-    if "schedule_meeting" in intent:
+    # Route based on detected intent
+    if intent == "schedule_meeting":
         return {
             "messages": messages + [
                 AIMessage(
@@ -122,25 +97,21 @@ User message: "{user_input}"
             ]
         }
 
-    elif "create_contract" in intent:
-        try:
-            parsed = json.loads(user_input)
-        except Exception:
-            parsed = {"raw_input": user_input}
-
+    elif intent == "create_contract":
         return {
             "messages": messages + [
                 AIMessage(
                     content="",
                     tool_calls=[{
                         "name": "create_contract",
-                        "args": parsed,
+                        "args": {"input": user_input},
                         "id": "tool_call_create_contract"
                     }]
                 )
             ]
         }
 
+    # Fallback to general LLM response
     try:
         response = model.generate_content(user_input)
         return {"messages": messages + [AIMessage(content=response.text)]}
@@ -166,7 +137,7 @@ def respond_with_tool_output(state: AgentState) -> AgentState:
     return {"messages": messages + [AIMessage(content="⚠️ Tool didn’t return anything.")]}
 
 # --- Step 4: Graph definition ---
-workflow = StateGraph(AgentState)  # ✅ تم إصلاح الخطأ هنا بتمرير AgentState
+workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", tool_node)
 workflow.add_node("respond", respond_with_tool_output)
