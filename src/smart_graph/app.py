@@ -10,8 +10,11 @@ def run_assistant():
             print("\n👋 Goodbye!")
             break
 
-        inputs = {"messages": [HumanMessage(content=user_input)]}
-        for output in app.stream(inputs):
+        inputs = {
+            "messages": [HumanMessage(content=user_input)],
+            "memory": []
+        }
+        for output in app.stream(inputs, config={"configurable": {"thread_id": "user-123"}}):
             for _, val in output.items():
                 if isinstance(val, dict) and "messages" in val:
                     messages = val["messages"]

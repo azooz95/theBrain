@@ -9,6 +9,11 @@ from src.smart_graph.utils.state import AgentState
 from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
 
+from langgraph.checkpoint.memory import InMemorySaver
+
+# Initialize the saver
+memory_saver = InMemorySaver()
+
 # Load .env for Gemini key
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -24,26 +29,6 @@ tool_node = ToolNode(tools=tools)
 def call_model(state: AgentState) -> AgentState:
     messages = state["messages"]
     user_input = messages[-1].content.strip()
-
-    # ⚠️ Fallback: direct JSON input implies create_contract
-    if user_input.startswith("{") and user_input.endswith("}"):
-        try:
-            parsed = json.loads(user_input)
-            if "mode" in parsed and "template_path" in parsed:
-                return {
-                    "messages": messages + [
-                        AIMessage(
-                            content="",
-                            tool_calls=[{
-                                "name": "create_contract",
-                                "args": {"input": parsed},
-                                "id": "tool_call_create_contract"
-                            }]
-                        )
-                    ]
-                }
-        except Exception:
-            pass  # proceed to intent classification
 
     # --- Gemini Prompt for intent classification ---
     intent_prompt = f"""
@@ -135,4 +120,4 @@ workflow.add_edge("tools", "respond")
 workflow.add_edge("respond", END)
 
 # --- COMPILE APP ---
-app = workflow.compile()
+app = workflow.compile(checkpointer=memory_saver)
