@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from src.smart_graph.agents.testDocument import DocumentAgent
+from agents.testDocument import DocumentAgent
 import json
 
 @tool

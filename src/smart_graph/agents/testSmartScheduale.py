@@ -8,6 +8,7 @@ from timezonefinder import TimezoneFinder
 from geopy.geocoders import Nominatim
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
+from config.config import file_paths
 
 
 class MeetingSchedulingAgent:
@@ -18,7 +19,7 @@ class MeetingSchedulingAgent:
         self._history = ""  # accumulate multi-turn inputs
 
     def initialize_google_calendar(self) -> Any:
-        flow = InstalledAppFlow.from_client_secrets_file('credentials.json', self.SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(file_paths.google_crenditials_path, self.SCOPES)
         creds = flow.run_local_server(port=3000)
         return build('calendar', 'v3', credentials=creds)
 
