@@ -14,6 +14,9 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+# Session state (mocked; use DB or Redis in production)
+CONTRACT_SESSION = {}
+
 class ContractGenerator:
     def __init__(self, template_path: str, contract_type: str = "Generic"):
         self.template_path = template_path
@@ -38,7 +41,7 @@ class ContractGenerator:
             for para in document.paragraphs:
                 if "[" in para.text and "]" in para.text:
                     field = para.text[para.text.find("[") + 1:para.text.find("]")]
-                    self.placeholders.append(field)
+                    self.placeholders.append(field.strip())
             self.placeholders = list(set(self.placeholders))  # remove duplicates
             return self.placeholders
         except Exception as e:
@@ -76,6 +79,45 @@ class ContractGenerator:
             return "Please provide a value."
         return q[0].capitalize() + q[1:] + "?"
 
+    def ask_next_question(self, user_id="default_user", answer=None) -> str:
+        session = CONTRACT_SESSION.get(user_id, {})
+        if not session:
+            # Init session
+            self.extract_placeholders()
+            questions = self.generate_questions()
+            session = {
+                "questions": questions,
+                "fields": list(questions.keys()),
+                "answers": {},
+                "current_index": 0,
+                "template": self.template_path
+            }
+            CONTRACT_SESSION[user_id] = session
+            return f"📄 Starting contract creation.\n{questions[session['fields'][0]]}"
+
+        if answer is not None:
+            current_field = session["fields"][session["current_index"]]
+            session["answers"][current_field] = answer
+            session["current_index"] += 1
+
+        if session["current_index"] >= len(session["fields"]):
+            # All answered → fill contract
+            self.responses = session["answers"]
+            CONTRACT_SESSION.pop(user_id, None)
+
+            self.fill_placeholders(self.responses)
+            self.export_responses_pdf()
+            return (
+                f"✅ Contract completed!\n"
+                f"📄 DOCX: `{self.docx_output}`\n📑 PDF: `{self.pdf_output}`"
+            )
+
+        # Ask next question
+        next_field = session["fields"][session["current_index"]]
+        question = session["questions"][next_field]
+        CONTRACT_SESSION[user_id] = session
+        return question
+
     def fill_placeholders(self, responses: dict):
         try:
             self.responses = responses
@@ -91,6 +133,15 @@ class ContractGenerator:
         except Exception as e:
             logging.error(f"Error filling document: {e}")
             raise
+
+    def fill_single_contract(self, data: dict) -> str:
+        """
+        Public method used in smart agent for single contract generation.
+        """
+        self.responses = data
+        self.fill_placeholders(data)
+        self.export_responses_pdf()
+        return self.docx_output
 
     def export_responses_pdf(self) -> str:
         try:
