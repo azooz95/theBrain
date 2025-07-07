@@ -1,12 +1,12 @@
 from dotenv import load_dotenv
-from utils.trello import trello
+from src.smart_graph.utils.trello import trello
 import requests
-from utils.send_notifications import send_email_notification
+from src.smart_graph.utils.send_notifications import send_email_notification
 from pydantic import BaseModel, Field 
 from typing import Optional, List , Literal
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import PydanticOutputParser
-from utils.task_creation_and_report_tools import create_task, Task,TaskList
+from src.smart_graph.utils.task_creation_and_report_tools import create_task, Task,TaskList
 import os 
 
 
