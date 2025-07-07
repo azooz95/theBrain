@@ -24,7 +24,7 @@ class MeetingSchedulingAgent:
 
     def run(self, input: str) -> str:
         if not input or len(input.strip()) < 5:
-            return "❗ Please describe the meeting you'd like to schedule (e.g. time, duration, participants)."
+            return "❗ Please describe the meeting you'd like to schedule ."
 
         self._history += f" {input.strip()}"
         meeting_details = self.parse_meeting_request(self._history, allow_partial=True)

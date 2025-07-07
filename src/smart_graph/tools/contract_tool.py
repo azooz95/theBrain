@@ -41,7 +41,6 @@ def create_contract(input: str = "") -> ToolMessage:
             return ToolMessage(
                 content=(
                     "🛠️ Would you like to create a **single** contract or **multiple** contracts?\n"
-                    "Say something like: `just one`, `batch`, `multiple`, `only one`, etc."
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
@@ -65,7 +64,7 @@ def create_contract(input: str = "") -> ToolMessage:
                 SESSION_CACHE[user_id] = session
             else:
                 return ToolMessage(
-                    content="📂 No `.docx` template found. Please upload a DOCX file to the `uploads/` folder and try again.",
+                    content="📂 No  template found. Please upload a DOCX file and try again.",
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
@@ -123,8 +122,6 @@ def create_contract(input: str = "") -> ToolMessage:
                 prompt = (
                     "📝 Please answer the following questions in **one message**, separated by commas:\n\n"
                     f"{question_list}\n\n"
-                    "📌 Example: `2025-06-24, John Doe, Jane Smith, Business Plan, 2 years`\n"
-                    "⏳ Waiting for your response..."
                 )
 
                 return ToolMessage(
@@ -153,7 +150,7 @@ def create_contract(input: str = "") -> ToolMessage:
                 content=(
                     f"📊 Please fill out this Excel template for batch contract generation:\n"
                     f"`{excel_template}`\n\n"
-                    "Once you're done, place the filled Excel file in the `uploads/` folder and type anything to proceed."
+                    "Once you're done, place the filled Excel file and confirm to proceed."
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
@@ -163,14 +160,14 @@ def create_contract(input: str = "") -> ToolMessage:
         try:
             filled_files = sorted(
                 [f for f in os.listdir(uploads_dir)
-                 if f.endswith(".xlsx") and not f.endswith("_template.xlsx")],
+                 if f.endswith(".xlsx") ],
                 key=lambda x: os.path.getctime(os.path.join(uploads_dir, x)),
                 reverse=True
             )
 
             if not filled_files:
                 return ToolMessage(
-                    content="⚠️ No filled Excel file found in `uploads/`. Please upload the completed template first.",
+                    content="⚠️ No filled Excel file found . Please upload the completed template first.",
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
