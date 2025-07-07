@@ -8,9 +8,6 @@ PLACEHOLDER_CACHE = {}
 SESSION_CACHE = {}
 
 def infer_mode_from_text(text: str) -> str:
-    """
-    Try to infer contract mode (single or multiple) from user message.
-    """
     text = text.lower()
     single_keywords = ["one", "single", "once", "just one", "only one"]
     multiple_keywords = ["many", "multiple", "batch", "several", "more than one"]
@@ -28,8 +25,16 @@ def create_contract(input: str = "") -> ToolMessage:
     """
     Smart contract creation agent. Interactively handles single or multiple contract generation.
     """
-    user_id = "default_user"  # You can make dynamic later
+    user_id = "default_user"
     session = SESSION_CACHE.get(user_id, {})
+
+    # Handle direct "single" or "multiple" replies
+    if input.strip().lower() in ["single", "one", "just one", "only one"]:
+        session["mode"] = "single"
+        SESSION_CACHE[user_id] = session
+    elif input.strip().lower() in ["multiple", "many", "batch", "more than one"]:
+        session["mode"] = "multiple"
+        SESSION_CACHE[user_id] = session
 
     # STEP 1 – Decide mode
     if "mode" not in session:
@@ -41,7 +46,6 @@ def create_contract(input: str = "") -> ToolMessage:
             return ToolMessage(
                 content=(
                     "🛠️ Would you like to create a **single** contract or **multiple** contracts?\n"
-                    "Say something like: `just one`, `batch`, `multiple`, `only one`, etc."
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
@@ -52,7 +56,6 @@ def create_contract(input: str = "") -> ToolMessage:
         try:
             uploads_dir = os.path.abspath("uploads")
             os.makedirs(uploads_dir, exist_ok=True)
-
             upload_files = sorted(
                 [f for f in os.listdir(uploads_dir) if f.endswith(".docx")],
                 key=lambda x: os.path.getctime(os.path.join(uploads_dir, x)),
@@ -60,12 +63,11 @@ def create_contract(input: str = "") -> ToolMessage:
             )
 
             if upload_files:
-                template_path = os.path.join(uploads_dir, upload_files[0])
-                session["template_path"] = template_path
+                session["template_path"] = os.path.join(uploads_dir, upload_files[0])
                 SESSION_CACHE[user_id] = session
             else:
                 return ToolMessage(
-                    content="📂 No `.docx` template found. Please upload a DOCX file to the `uploads/` folder and try again.",
+                    content="📂 No  template found. Please upload a DOCX file and try again.",
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
@@ -76,13 +78,12 @@ def create_contract(input: str = "") -> ToolMessage:
                 tool_call_id="tool_call_create_contract"
             )
 
-    # STEP 3 – Proceed based on mode
-    mode = session["mode"]
+    # Step 3 – Create contract generator
     template_path = session["template_path"]
     generator = ContractGenerator(template_path=template_path)
 
     # ---- SINGLE MODE ----
-    if mode == "single":
+    if session["mode"] == "single":
         if not session.get("answers_collected"):
             if "awaiting_fields" in session and input:
                 try:
@@ -99,7 +100,7 @@ def create_contract(input: str = "") -> ToolMessage:
 
                     output_path = generator.fill_placeholders(data)
                     return ToolMessage(
-                        content=f"✅ Contract generated successfully!\n\n📄 Output file: `{output_path}`",
+                        content=f"✅ Contract generated successfully!\n\n📄 Download Here: `{output_path}`",
                         name="create_contract",
                         tool_call_id="tool_call_create_contract"
                     )
@@ -123,8 +124,6 @@ def create_contract(input: str = "") -> ToolMessage:
                 prompt = (
                     "📝 Please answer the following questions in **one message**, separated by commas:\n\n"
                     f"{question_list}\n\n"
-                    "📌 Example: `2025-06-24, John Doe, Jane Smith, Business Plan, 2 years`\n"
-                    "⏳ Waiting for your response..."
                 )
 
                 return ToolMessage(
@@ -134,13 +133,13 @@ def create_contract(input: str = "") -> ToolMessage:
                 )
 
         return ToolMessage(
-            content="⚠️ You already submitted your answers. Restart the process if you'd like to change them.",
+            content="⚠️ You already submitted your answers.",
             name="create_contract",
             tool_call_id="tool_call_create_contract"
         )
 
     # ---- MULTIPLE MODE ----
-    elif mode == "multiple":
+    elif session["mode"] == "multiple":
         uploads_dir = os.path.abspath("uploads")
 
         if not session.get("excel_template_generated"):
@@ -152,25 +151,24 @@ def create_contract(input: str = "") -> ToolMessage:
             return ToolMessage(
                 content=(
                     f"📊 Please fill out this Excel template for batch contract generation:\n"
-                    f"`{excel_template}`\n\n"
-                    "Once you're done, place the filled Excel file in the `uploads/` folder and type anything to proceed."
+                    
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
             )
 
-        # Step 2 – Detect latest filled Excel (excluding templates) and generate
+        # Now check if the filled Excel exists
         try:
             filled_files = sorted(
                 [f for f in os.listdir(uploads_dir)
-                 if f.endswith(".xlsx") and not f.endswith("_template.xlsx")],
+                 if f.endswith(".xlsx")],
                 key=lambda x: os.path.getctime(os.path.join(uploads_dir, x)),
                 reverse=True
             )
 
             if not filled_files:
                 return ToolMessage(
-                    content="⚠️ No filled Excel file found in `uploads/`. Please upload the completed template first.",
+                    content="⚠️ No filled Excel file found in. Please upload the completed template first.",
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
