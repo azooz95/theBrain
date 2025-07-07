@@ -8,7 +8,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import PydanticOutputParser
 from src.smart_graph.utils.task_creation_and_report_tools import create_task, Task,TaskList
 import os 
-
+import json
+from pydantic import ValidationError
 
 tr=trello()
 
@@ -63,27 +64,35 @@ def intent_and_board_agent(user_input: str) -> dict:
     
     return parsed
 
-def task_extractor_agent(board : str, user_input:str ) -> str:
-    """Create Trello cards for tasks on a board and notify members by email."""
-    prompt = "\n".join(["Extract tasks from the given text and return them in JSON format.\n"
-            f"{tasks_format}\n"
-            "Only return valid JSON without any additional text. If due_date isn't specified, return null for that field.\n"
-            "If assigned members aren't explicitly mentioned, leave the assigned_to array empty.\n"
-            "Extract all relevant task information based on the context.",
-            f"text : {user_input}"])
-    
+def task_extractor_agent(board: str, user_input: str) -> str:
+    prompt = "\n".join([
+        "Extract tasks from the given text and return them in JSON format.",
+        f"{tasks_format}",
+        "Only return valid JSON without any additional text. If due_date isn't specified, return null for that field.",
+        "If assigned members aren't explicitly mentioned, leave the assigned_to array empty.",
+        "Extract all relevant task information based on the context.",
+        f"text: {user_input}"
+    ])
+
     response = llm.invoke(prompt)
-    
+
     try:
-        # Parse the response into a TaskList object
-        tasks = tasks_parser.parse(response.content)
-        
-        # Call create_task with the board name and tasks
-        results = create_task(board, tasks)
-        
-        return "".join(results)
+        raw_output = response.content
+        print("LLM Output:", raw_output)  # Optional debug
+
+        # Parse using Pydantic
+        tasks_obj = tasks_parser.parse(raw_output)
+
+        # Validate structure
+        if not hasattr(tasks_obj, "tasks") or not isinstance(tasks_obj.tasks, list):
+            raise ValueError("Parsed tasks object has no 'tasks' list.")
+
+        return create_task(board, tasks_obj)
+
+    except ValidationError as ve:
+        return f"❌ Validation failed: {str(ve)}"
     except Exception as e:
-        return f"Error creating tasks: {str(e)}"
+        return f"❌ Error creating tasks: {str(e)}"
     
 def generate_report(board) -> str:
     """Generates a summary of all tasks on a specific Trello board."""
