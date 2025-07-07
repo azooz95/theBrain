@@ -8,8 +8,10 @@ from timezonefinder import TimezoneFinder
 from geopy.geocoders import Nominatim
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
-from config.config import file_paths
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
 class MeetingSchedulingAgent:
     SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -19,13 +21,17 @@ class MeetingSchedulingAgent:
         self._history = ""  # accumulate multi-turn inputs
 
     def initialize_google_calendar(self) -> Any:
-        flow = InstalledAppFlow.from_client_secrets_file(file_paths.google_crenditials_path, self.SCOPES)
+        creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH")
+        if not creds_path or not os.path.exists(creds_path):
+            raise FileNotFoundError("❌ GOOGLE_CREDENTIALS_PATH not set or file does not exist.")
+        
+        flow = InstalledAppFlow.from_client_secrets_file(creds_path, self.SCOPES)
         creds = flow.run_local_server(port=3000)
-        return build('calendar', 'v3', credentials=creds)
+        return build("calendar", "v3", credentials=creds)
 
     def run(self, input: str) -> str:
         if not input or len(input.strip()) < 5:
-            return "❗ Please describe the meeting you'd like to schedule (e.g. time, duration, participants)."
+            return "❗ Please describe the meeting you'd like to schedule ."
 
         self._history += f" {input.strip()}"
         meeting_details = self.parse_meeting_request(self._history, allow_partial=True)
