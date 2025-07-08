@@ -1,7 +1,7 @@
 import os
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from src.smart_graph.agents.testContract import ContractGenerator
+from src.smart_graph.agents.Create_Contract import ContractGenerator
 
 # In-memory session and field caches
 PLACEHOLDER_CACHE = {}

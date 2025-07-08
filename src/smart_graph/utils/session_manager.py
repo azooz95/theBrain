@@ -1,6 +1,6 @@
 import os
 from langchain_core.messages import AIMessage
-from agents.testContract import ContractGenerator
+from src.smart_graph.agents.Create_Contract import ContractGenerator
 
 class SessionManager:
     def __init__(self):

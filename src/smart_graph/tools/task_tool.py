@@ -1,7 +1,7 @@
 # task_tool.py
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from src.smart_graph.agents.TaskCreation_And_Progress_report_Agent import (
+from src.smart_graph.agents.Task_Creation import (
     intent_and_board_agent,
     task_extractor_agent,
     generate_report
