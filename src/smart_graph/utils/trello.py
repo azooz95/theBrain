@@ -25,10 +25,21 @@ class trello:
 
         self.trello_api_key = TRELLO_API_KEY
         self.trello_token = TRELLO_TOKEN 
-        self.trello_username = "mohamedbahaa45"
+        #self.trello_username = "mohamedbahaa45"
+        self.base_url = BASE_URL
         self.trello_base_params = {"key": self.trello_api_key, "token": self.trello_token}
+        self.trello_username = self.get_my_trello_username()
+    
+    #by me to fetch the username
+    def get_my_trello_username(self) -> Optional[str]:
+        url = f"{self.base_url}/members/me"
+        response = requests.get(url, params=self.trello_base_params)
 
-
+        if response.status_code == 200:
+            return response.json().get("username")  
+        else:
+            print("❌ Failed to fetch Trello username:", response.text)
+            return None
 
     def get_trello_boards(self) -> List[Dict]:
         """Get all Trello boards for the user"""
@@ -340,5 +351,5 @@ class trello:
     # Optionally, remove the chart image after saving the PDF
       if os.path.exists(chart_filename):
           os.remove(chart_filename)
-
+      return f"📄 Report generated successfully: {pdf_filename}"
  
