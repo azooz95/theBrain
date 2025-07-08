@@ -44,9 +44,7 @@ def create_contract(input: str = "") -> ToolMessage:
             SESSION_CACHE[user_id] = session
         else:
             return ToolMessage(
-                content=(
-                    "🛠️ Would you like to create a **single** contract or **multiple** contracts?\n"
-                ),
+                content="🛠️ Would you like to create a **single** contract or **multiple** contracts?",
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
             )
@@ -67,7 +65,7 @@ def create_contract(input: str = "") -> ToolMessage:
                 SESSION_CACHE[user_id] = session
             else:
                 return ToolMessage(
-                    content="📂 No  template found. Please upload a DOCX file and try again.",
+                    content="📂 No template found. Please upload a DOCX file and try again.",
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
@@ -99,8 +97,17 @@ def create_contract(input: str = "") -> ToolMessage:
                     SESSION_CACHE[user_id] = session
 
                     output_path = generator.fill_placeholders(data)
+
+                    # Reset session after completion
+                    PLACEHOLDER_CACHE.pop(template_path, None)
+                    SESSION_CACHE[user_id] = {}
+
                     return ToolMessage(
-                        content=f"✅ Contract generated successfully!\n\n📄 Download Here: `{output_path}`",
+                        content=(
+                            f"✅ Contract generated successfully!\n\n"
+                            f"📄 Download Here: `{output_path}`\n\n"
+                            f"✳️ You can now start again ."
+                        ),
                         name="create_contract",
                         tool_call_id="tool_call_create_contract"
                     )
@@ -133,7 +140,7 @@ def create_contract(input: str = "") -> ToolMessage:
                 )
 
         return ToolMessage(
-            content="⚠️ You already submitted your answers.",
+            content="⚠️ You already submitted your answers. Please start a new session with `single` or `multiple`.",
             name="create_contract",
             tool_call_id="tool_call_create_contract"
         )
@@ -149,10 +156,7 @@ def create_contract(input: str = "") -> ToolMessage:
             SESSION_CACHE[user_id] = session
 
             return ToolMessage(
-                content=(
-                    f"📊 Please fill out this Excel template for batch contract generation:\n"
-                    
-                ),
+                content="📊 Please fill out this Excel template for batch contract generation.",
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
             )
@@ -160,15 +164,14 @@ def create_contract(input: str = "") -> ToolMessage:
         # Now check if the filled Excel exists
         try:
             filled_files = sorted(
-                [f for f in os.listdir(uploads_dir)
-                 if f.endswith(".xlsx")],
+                [f for f in os.listdir(uploads_dir) if f.endswith(".xlsx")],
                 key=lambda x: os.path.getctime(os.path.join(uploads_dir, x)),
                 reverse=True
             )
 
             if not filled_files:
                 return ToolMessage(
-                    content="⚠️ No filled Excel file found in. Please upload the completed template first.",
+                    content="⚠️ No filled Excel file found. Please upload the completed template first.",
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
@@ -176,10 +179,15 @@ def create_contract(input: str = "") -> ToolMessage:
             filled_excel_path = os.path.join(uploads_dir, filled_files[0])
             output_paths = generator.generate_bulk_contracts(filled_excel_path)
 
+            # Reset session after completion
+            PLACEHOLDER_CACHE.pop(template_path, None)
+            SESSION_CACHE[user_id] = {}
+
             return ToolMessage(
                 content=(
                     f"✅ Contracts generated from Excel file `{filled_files[0]}`:\n\n" +
-                    "\n".join([f"📄 {path}" for path in output_paths])
+                    "\n".join([f"📄 {path}" for path in output_paths]) +
+                    "\n\n✳️ You can now start again."
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
