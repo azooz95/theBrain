@@ -1,154 +1,128 @@
 import os
-import json
 import google.generativeai as genai
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
-from src.smart_graph.utils.state import AgentState
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from typing import Literal
 from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
+from src.smart_graph.tools.task_tool import create_or_report_task
+from src.smart_graph.utils.state import AgentState  
 
-# Load environment and configure Gemini
+# --- Step 1: Load environment and configure Gemini ---
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-# Register tools
-tools = [create_contract, schedule_meeting]
+# --- Step 2: Register tools ---
+tools = [create_contract, schedule_meeting, create_or_report_task]
 tool_node = ToolNode(tools=tools)
 
-# Track recent context
-RECENT_CONTEXT = []
-
-# --- Step 1: Intent Detection Agent ---
-def call_model(state: AgentState) -> AgentState:
+# --- Step 3: Agent logic with multi-turn memory ---
+def agent_logic(state: AgentState) -> AgentState:
     messages = state["messages"]
     user_input = messages[-1].content.strip()
+    current_agent = state.get("current_agent")
 
-    # Use last 5 message turns as dialogue history
-    dialogue = "\n".join([
+    if current_agent:
+        # 🧠 If an agent is active, continue conversation with it
+        return {
+            "messages": messages + [
+                AIMessage(content="", tool_calls=[{
+                    "name": current_agent,
+                    "args": {"input": user_input},
+                    "id": f"tool_call_{current_agent}"
+                }])
+            ],
+            "current_agent": current_agent
+        }
+
+    # Otherwise: detect user intent
+    context = "\n".join(
         f"{m.type.upper()}: {m.content.strip()}"
-        for m in messages[-5:] if hasattr(m, "content") and m.content.strip()
-    ])
-    recent_context = dialogue.lower()
-    RECENT_CONTEXT.append(recent_context)
-    RECENT_CONTEXT[:] = RECENT_CONTEXT[-5:]  # Keep it short
+        for m in messages[-5:] if hasattr(m, "content")
+    )
 
-    # Extra logic: if recent messages already discussed contracts, override classification
-    contract_keywords = ["contract", "template", "docx", "placeholder", "single", "multiple", "once", "batch", "upload"]
-    if any(kw in " ".join(RECENT_CONTEXT).lower() for kw in contract_keywords):
-        if user_input.lower() in ["single", "just one", "once", "one", "1", "multiple", "many", "batch"]:
-            return {
-                "messages": messages + [
-                    AIMessage(
-                        content="",
-                        tool_calls=[{
-                            "name": "create_contract",
-                            "args": {"input": user_input},
-                            "id": "tool_call_create_contract"
-                        }]
-                    )
-                ]
-            }
-
-    # Prompt Gemini to infer intent
     intent_prompt = f"""
-You are an AI assistant that helps route user requests to tools in a multi-agent system.
-
-Your job is to classify the **latest user message** based on the ongoing conversation.
-
-The system supports 3 tools:
-1. `create_contract` → Used when the user wants to generate a contract (single or multiple), upload a template, fill placeholders, etc.
-2. `schedule_meeting` → Used when the user wants to schedule a meeting, specify time, participants, etc.
-3. `general_query` → Everything else: general questions, greetings, or small talk.
-
-Below is the recent conversation:
-
-{dialogue}
-
-Now classify the LAST user message ONLY into one of:
+You are a smart AI assistant in a multi-agent system. Classify the **latest user message** into one of:
 - create_contract
 - schedule_meeting
+- create_or_report_task
 - general_query
 
-Respond with just the tool name, nothing else.
+Context:
+{context}
 """
+
     try:
         intent = model.generate_content(intent_prompt).text.strip().lower()
-        print(f"[DEBUG] Intent classified as: {intent}")
+        print(f"[DEBUG] Detected intent: {intent}")
     except Exception:
-        return {"messages": messages + [
-            AIMessage(content="❌ Intent detection failed. Please try again.")
-        ]}
-
-    # Route based on detected intent
-    if intent == "schedule_meeting":
         return {
-            "messages": messages + [
-                AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "schedule_meeting",
-                        "args": {"input": user_input},
-                        "id": "tool_call_schedule_meeting"
-                    }]
-                )
-            ]
+            "messages": messages + [AIMessage(content="❌ Failed to detect intent.")],
+            "current_agent": None
         }
 
-    elif intent == "create_contract":
+    if intent in ["create_contract", "schedule_meeting", "create_or_report_task"]:
         return {
             "messages": messages + [
-                AIMessage(
-                    content="",
-                    tool_calls=[{
-                        "name": "create_contract",
-                        "args": {"input": user_input},
-                        "id": "tool_call_create_contract"
-                    }]
-                )
-            ]
+                AIMessage(content="", tool_calls=[{
+                    "name": intent,
+                    "args": {"input": user_input},
+                    "id": f"tool_call_{intent}"
+                }])
+            ],
+            "current_agent": intent
         }
 
-    # Fallback to general LLM response
+    # Otherwise, fallback to generic reply
     try:
-        response = model.generate_content(user_input)
-        return {"messages": messages + [AIMessage(content=response.text)]}
-    except Exception:
-        return {"messages": messages + [AIMessage(content="⚠️ Something went wrong while generating a response.")]}
+        reply = model.generate_content(user_input).text.strip()
+        return {
+            "messages": messages + [AIMessage(content=reply)],
+            "current_agent": None
+        }
+    except:
+        return {
+            "messages": messages + [AIMessage(content="⚠️ Gemini failed to respond.")],
+            "current_agent": None
+        }
 
-# --- Step 2: Decide if tools should run ---
+# --- Step 4: Respond with tool output ---
+def respond_with_tool(state: AgentState) -> AgentState:
+    tool_messages = [m for m in state["messages"] if isinstance(m, ToolMessage)]
+    if tool_messages:
+        return {
+            "messages": state["messages"] + [AIMessage(content=tool_messages[-1].content)],
+            "current_agent": None  # ✅ Reset agent after tool completes
+        }
+    return {
+        "messages": state["messages"] + [AIMessage(content="⚠️ Tool returned nothing.")],
+        "current_agent": None
+    }
+
+# --- Step 5: Should we continue? ---
 def should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "continue"
+        return "tool"
     return "end"
 
-# --- Step 3: Handle tool output ---
-def respond_with_tool_output(state: AgentState) -> AgentState:
-    messages = state["messages"]
-    tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
+# --- Step 6: Build the graph ---
+agent_builder = StateGraph(AgentState)
+agent_builder.add_node("llm_call", agent_logic)
+agent_builder.add_node("tool", tool_node)
+agent_builder.add_node("respond", respond_with_tool)
 
-    if tool_messages:
-        last_output = tool_messages[-1].content
-        return {"messages": messages + [AIMessage(content=last_output)]}
-
-    return {"messages": messages + [AIMessage(content="⚠️ Tool didn’t return anything.")]}
-
-# --- Step 4: Graph definition ---
-workflow = StateGraph(AgentState)
-workflow.add_node("agent", call_model)
-workflow.add_node("tools", tool_node)
-workflow.add_node("respond", respond_with_tool_output)
-
-workflow.set_entry_point("agent")
-workflow.add_conditional_edges("agent", should_continue, {
-    "continue": "tools",
+agent_builder.set_entry_point("llm_call")
+agent_builder.add_conditional_edges("llm_call", should_continue, {
+    "tool": "tool",
     "end": END
 })
-workflow.add_edge("tools", "respond")
-workflow.add_edge("respond", END)
+agent_builder.add_edge("tool", "respond")
+agent_builder.add_edge("respond", END)
 
-# --- Step 5: Compile app ---
-app = workflow.compile()
+# --- Step 7: Compile the graph ---
+agent = agent_builder.compile()
+app = agent

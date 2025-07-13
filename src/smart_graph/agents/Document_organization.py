@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import google.generativeai as genai
-from agents.docOrganization import DocumentIntelligencePipeline
+from src.smart_graph.agents.document_class import DocumentIntelligencePipeline
 import traceback
 
 class DocumentAgent:

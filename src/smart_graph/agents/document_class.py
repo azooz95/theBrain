@@ -4,8 +4,8 @@ from datetime import datetime
 from pymilvus import MilvusClient
 import google.generativeai as genai
 
-from agents.text_extractor import TextImgExtractor
-from agents.send_mail import send_email
+from src.smart_graph.utils.text_extractor import TextImgExtractor
+from src.smart_graph.utils.send_mail import send_email
 
 from dotenv import load_dotenv
 load_dotenv()
