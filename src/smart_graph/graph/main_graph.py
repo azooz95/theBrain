@@ -10,6 +10,10 @@ from src.smart_graph.tools.meeting_tool import schedule_meeting
 from src.smart_graph.tools.task_tool import create_or_report_task
 from src.smart_graph.utils.state import AgentState  
 
+from langgraph.checkpoint.memory import InMemorySaver
+
+checkpointer = InMemorySaver()
+
 # --- Step 1: Load environment and configure Gemini ---
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -124,5 +128,5 @@ agent_builder.add_edge("tool", "respond")
 agent_builder.add_edge("respond", END)
 
 # --- Step 7: Compile the graph ---
-agent = agent_builder.compile()
+agent = agent_builder.compile(checkpointer=checkpointer)
 app = agent

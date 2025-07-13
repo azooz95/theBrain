@@ -47,11 +47,12 @@ dependencies = [
     "pymilvus[model]", 
     "reportlab",
     "timezonefinder",
-    "geopy",
-    "google-generativeai",
-    "slack_sdk",
-    "trello",
-    "pyjwt",
+    "geopy==2.4.1",
+    "google-generativeai==0.8.5",
+    "slack_sdk==3.35.0",
+    "trello==0.9.7.3",
+    "pyjwt==2.10.1",
+    "langchain_milvus==0.2.0"
 
 ]
 

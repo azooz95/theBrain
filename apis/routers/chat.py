@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, FastAPI, WebSocket, WebSo
 from pydantic import BaseModel, ConfigDict
 from apis.token_generator import get_current_user, verify_token
 from starlette.websockets import WebSocketState
-
 from src.smart_graph.graph.main_graph import app as graph_app
 
 app = FastAPI()
