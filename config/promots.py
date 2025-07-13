@@ -9,7 +9,7 @@ FORMAT_PROMOT = lambda veriables, promot_template: promot_template.format(**veri
 class GraphPrompts:
 
     @staticmethod
-    def get_intent_classification_prompt_template(input: str, classification: list) -> str:
+    def get_intent_classification_prompt_template(input: str, classification: list, format: JsonOutputParser) -> str:
 
         promot_template = PromptTemplate.from_template("""
             Classify this user request into ONE of the following intents:
@@ -19,19 +19,22 @@ class GraphPrompts:
             If it includes scheduling, dates, times, or "meeting", assume schedule_meeting.
 
             Input: "{input}"
+            Format: "{fomrat}:
             """
         )
         return FORMAT_PROMOT({"input": input, "classification":classification}, promot_template)
 
 # 
 class RunPromots: 
+    def __init__(self, outputs=None):
 
+        pass
     @staticmethod
     def run(llm, promote_template, inputs) -> str:
         chain = (
             RunnableLambda(promote_template)
             | llm
-            | StrOutputParser()
+            | JsonOutputParser()
         )
 
         return chain.invoke(**inputs)

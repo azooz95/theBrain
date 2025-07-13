@@ -7,22 +7,43 @@ from embedder import embedding_model
 import bcrypt
 from functools import wraps
 
+is_server = True
 # Load environment variables
 load_dotenv()
 
-# Initialize Milvus vector stores
+server_ip = "127.0.0.1"
+port = 19530
+
+milvus_uri = os.environ.get('MILVUS_URI', "https://in03-797ad2fd750bbe3.serverless.gcp-us-west1.cloud.zilliz.com")
+milvus_token = os.environ.get('MILVUS_TOKEN', '6a5203dfe89e59dd3491f39a9efb2c33657a3bbe439e8c9d7e348321d8c0330305463f9fef4175bb64bc18074d15928867acd3f9')
+
+
+if not is_server: 
+    connections_configs= {
+        'host': server_ip,
+        'port': port
+    }
+else:
+    connections_configs= {
+        "uri": os.environ["MILVUS_URI"],
+        "token": os.environ["MILVUS_TOKEN"]
+    }
+
+index_params = {"index_type": "FLAT", "metric_type": "L2"}
+
+# Separate vector stores
 user_store = Milvus(
     embedding_function=embedding_model,
     collection_name="user_profiles",
-    connection_args={"uri": os.environ["MILVUS_URI"], "token": os.environ["MILVUS_TOKEN"]},
-    index_params={"index_type": "FLAT", "metric_type": "L2"},
+    connection_args=connections_configs,
+    index_params=index_params,
 )
 
 document_store = Milvus(
     embedding_function=embedding_model,
     collection_name="document_embeddings",
-    connection_args={"uri": os.environ["MILVUS_URI"], "token": os.environ["MILVUS_TOKEN"]},
-    index_params={"index_type": "FLAT", "metric_type": "L2"},
+    connection_args=connections_configs,
+    index_params=index_params,
 )
 
 # -------- Decorator -------- #

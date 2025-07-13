@@ -58,17 +58,16 @@ async def websocket_chat(websocket: WebSocket):
     try: 
         user = verify_token(token_value)
 
-    except HTTPException as e:
-        await websocket.send_text(f"Invalid token: {e.detail}")
-        await websocket.close(code=1008)
-        print(f"Invalid token: {e.detail}")
-        return
+    # except HTTPException as e:
+    #     await websocket.send_text(f"Invalid token: {e.detail}")
+    #     await websocket.close(code=1008)
+    #     print(f"Invalid token: {e.detail}")
+    #     return
     
     except Exception as e:
-        await websocket.send_text(f"Error verify token: {str(e)}")
         await websocket.close(code=1008)
         print(f"Error verify token: {e}")
-        return
+        return HTTPException(status_code=401, detail="Invalid token")
 
     try:
         await websocket.accept()
@@ -82,7 +81,8 @@ async def websocket_chat(websocket: WebSocket):
                 continue
 
             inputs = {"messages": [HumanMessage(content=data)]}
-            for output in graph_app.stream(inputs):
+            thread_id = {"configurable": {"thread_id": "1"}}
+            for output in graph_app.stream(inputs, thread_id):
                 for _, val in output.items():
                     if isinstance(val, dict) and "messages" in val:
                         messages = val["messages"]
