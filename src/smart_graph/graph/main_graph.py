@@ -9,26 +9,19 @@ from src.smart_graph.utils.state import AgentState
 from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
 
-from langgraph.checkpoint.memory import InMemorySaver
-
-# Initialize the saver
-memory_saver = InMemorySaver()
-
-# Load .env for Gemini key
+# Load environment and configure Gemini
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-# Register tool functions
+# Register tools
 tools = [create_contract, schedule_meeting]
 tool_node = ToolNode(tools=tools)
 
 # Track recent context
 RECENT_CONTEXT = []
 
-
-# --- INTENT DETECTION FUNCTION ---
+# --- Step 1: Intent Detection Agent ---
 def call_model(state: AgentState) -> AgentState:
     messages = state["messages"]
     user_input = messages[-1].content.strip()
@@ -69,10 +62,6 @@ The system supports 3 tools:
 1. `create_contract` → Used when the user wants to generate a contract (single or multiple), upload a template, fill placeholders, etc.
 2. `schedule_meeting` → Used when the user wants to schedule a meeting, specify time, participants, etc.
 3. `general_query` → Everything else: general questions, greetings, or small talk.
-    Classify this user request into ONE of the following intents:
-    - schedule_meeting
-    - create_contract
-    - general_query
 
 Below is the recent conversation:
 
@@ -129,16 +118,14 @@ Respond with just the tool name, nothing else.
     except Exception:
         return {"messages": messages + [AIMessage(content="⚠️ Something went wrong while generating a response.")]}
 
-
-# --- CONDITION TO TRIGGER TOOL EXECUTION ---
+# --- Step 2: Decide if tools should run ---
 def should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
         return "continue"
     return "end"
 
-
-# --- TOOL RESPONSE HANDLER ---
+# --- Step 3: Handle tool output ---
 def respond_with_tool_output(state: AgentState) -> AgentState:
     messages = state["messages"]
     tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
@@ -163,5 +150,5 @@ workflow.add_conditional_edges("agent", should_continue, {
 workflow.add_edge("tools", "respond")
 workflow.add_edge("respond", END)
 
-# --- COMPILE APP ---
-app = workflow.compile(checkpointer=memory_saver)
+# --- Step 5: Compile app ---
+app = workflow.compile()
