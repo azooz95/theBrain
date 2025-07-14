@@ -70,8 +70,9 @@ async def websocket_chat(websocket: WebSocket):
 
             inputs = {"messages": [HumanMessage(content=data)]}
             last_response = None
-
-            for output in graph_app.stream(inputs):
+            thread_id = {"configurable": {"thread_id": "1"}}
+            
+            for output in graph_app.stream(inputs, thread_id):
                 for _, val in output.items():
                     if isinstance(val, dict) and "messages" in val:
                         messages = val["messages"]
