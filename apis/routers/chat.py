@@ -1,5 +1,4 @@
 # fast router
-
 from langchain_core.messages import HumanMessage, AIMessage
 from fastapi import APIRouter, Depends, HTTPException, FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict
