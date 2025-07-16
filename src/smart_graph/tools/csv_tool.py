@@ -4,29 +4,37 @@ from typing import Annotated
 from langchain_core.tools import tool
 from src.smart_graph.agents.DataAnalysis import GeminiCSVAgent
 
+session_agent = GeminiCSVAgent()  # Persistent session
+
 @tool
-def analyze_csv(filename: str, question: str) -> str:
+def analyze_csv(input: str) -> str:
     """
-    Analyze a CSV file uploaded to the /uploads folder and answer a question about it.
+    Interactively analyze a CSV file. The flow is:
+    1. Wait for user to upload a CSV (if none exists).
+    2. Display available files and ask for filename.
+    3. Once file is selected, accept and answer questions.
     """
-    agent = GeminiCSVAgent()
 
-    # Step 1: Wait until CSVs are available
-    files = agent.wait_for_file()
+    # Step 1: Wait for at least one CSV
+    files = session_agent.get_available_csv_files()
+    if not files:
+        session_agent.wait_for_file()
+        files = session_agent.get_available_csv_files()
 
-    # Step 2: If no filename, return available
-    if not filename:
-        return f"✅ Found CSV files: {files}. Please provide filename to continue."
+    # Step 2: No file selected yet
+    if session_agent.selected_filename is None:
+        if input.lower().endswith(".csv"):
+            try:
+                session_agent.select_file(input)
+                return "📄 File loaded successfully. Now ask me any question about your data."
+            except FileNotFoundError:
+                return f"❌ File not found: {input}. Try one of these: {files}"
+        else:
+            return f"✅ Found CSV files: {files}. Please enter one of them to continue."
 
-    # Step 3: Try selecting file
+    # Step 3: A file is already selected → answer questions
     try:
-        agent.select_file(filename)
-    except FileNotFoundError as e:
-        return str(e)
-
-    # Step 4: Ask the question
-    try:
-        answer = agent.ask(question)
+        answer = session_agent.ask(input)
         return answer
     except Exception as e:
-        return f"❌ Error: {e}"
+        return f"❌ Error while analyzing: {e}"

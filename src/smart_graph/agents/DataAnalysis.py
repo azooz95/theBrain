@@ -61,8 +61,8 @@ Answer the following user question using only this data:
         response = self.model.generate_content(prompt)
         return response.text
 
-""" 
-# 🧪 CLI Runner
+
+""" # 🧪 CLI Runner
 if __name__ == "__main__":
     agent = GeminiCSVAgent()
 

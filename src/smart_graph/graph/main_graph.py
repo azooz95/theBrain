@@ -107,10 +107,24 @@ def respond_with_tool(state: AgentState) -> AgentState:
             "messages": state["messages"] + [AIMessage(content=tool_messages[-1].content)],
             "current_agent": None
         }
+
+    # ✅ Fallback: check last AIMessage with tool_calls (i.e., tool returned but no ToolMessage)
+    last_ai_tool_call = next(
+        (m for m in reversed(state["messages"])
+         if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)),
+        None
+    )
+    if last_ai_tool_call:
+        return {
+            "messages": state["messages"] + [AIMessage(content="⚠️ Tool executed but no ToolMessage was received.")],
+            "current_agent": None
+        }
+
     return {
         "messages": state["messages"] + [AIMessage(content="⚠️ No response from tool.")],
         "current_agent": None
     }
+
 
 # --- Routing Logic ---
 def should_continue(state: AgentState) -> str:
