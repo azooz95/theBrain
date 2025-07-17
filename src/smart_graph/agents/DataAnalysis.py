@@ -72,7 +72,7 @@ Answer the following user question using only this data:
             return f"⚠️ Error during response generation: {e}"
 
 
-# 🧪 CLI Runner
+""" # 🧪 CLI Runner
 if __name__ == "__main__":
     agent = GeminiCSVAgent()
 
@@ -103,3 +103,4 @@ if __name__ == "__main__":
             print("🤖 Gemini:", result, "\n")
         except Exception as e:
             print("❌ Error:", e, "\n")
+ """

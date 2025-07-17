@@ -5,11 +5,14 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from typing import Literal
+
+# Import tools
 from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
 from src.smart_graph.tools.task_tool import create_or_report_task
-from src.smart_graph.utils.state import AgentState  
+from src.smart_graph.tools.data_tool import analyze_data
 
+from src.smart_graph.utils.state import AgentState
 from langgraph.checkpoint.memory import InMemorySaver
 
 checkpointer = InMemorySaver()
@@ -20,7 +23,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Step 2: Register tools ---
-tools = [create_contract, schedule_meeting, create_or_report_task]
+tools = [create_contract, schedule_meeting, create_or_report_task, analyze_data]
 tool_node = ToolNode(tools=tools)
 
 # --- Step 3: Agent logic with multi-turn memory ---
@@ -30,7 +33,6 @@ def agent_logic(state: AgentState) -> AgentState:
     current_agent = state.get("current_agent")
 
     if current_agent:
-        # 🧠 If an agent is active, continue conversation with it
         return {
             "messages": messages + [
                 AIMessage(content="", tool_calls=[{
@@ -53,11 +55,12 @@ You are a smart AI assistant in a multi-agent system. Classify the **latest user
 - create_contract
 - schedule_meeting
 - create_or_report_task
+- analyze_data
 - general_query
 
 Context:
 {context}
-"""
+""".strip()
 
     try:
         intent = model.generate_content(intent_prompt).text.strip().lower()
@@ -68,7 +71,7 @@ Context:
             "current_agent": None
         }
 
-    if intent in ["create_contract", "schedule_meeting", "create_or_report_task"]:
+    if intent in ["create_contract", "schedule_meeting", "create_or_report_task", "analyze_data"]:
         return {
             "messages": messages + [
                 AIMessage(content="", tool_calls=[{
@@ -80,7 +83,6 @@ Context:
             "current_agent": intent
         }
 
-    # Otherwise, fallback to generic reply
     try:
         reply = model.generate_content(user_input).text.strip()
         return {
@@ -99,7 +101,7 @@ def respond_with_tool(state: AgentState) -> AgentState:
     if tool_messages:
         return {
             "messages": state["messages"] + [AIMessage(content=tool_messages[-1].content)],
-            "current_agent": None  # ✅ Reset agent after tool completes
+            "current_agent": None
         }
     return {
         "messages": state["messages"] + [AIMessage(content="⚠️ Tool returned nothing.")],
