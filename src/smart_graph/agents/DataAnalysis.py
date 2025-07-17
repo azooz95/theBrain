@@ -25,20 +25,27 @@ class GeminiCSVAgent:
 
     def wait_for_file(self):
         while True:
-            csvs = self.get_available_csv_files()
-            if csvs:
-                return csvs
+            files = self.get_available_files()
+            if files:
+                return files
             time.sleep(1)
 
-    def get_available_csv_files(self):
-        return [f for f in os.listdir(self.upload_folder) if f.endswith(".csv")]
+    def get_available_files(self):
+        return [f for f in os.listdir(self.upload_folder) if f.endswith((".csv", ".xlsx"))]
 
     def select_file(self, filename: str):
         path = os.path.join(self.upload_folder, filename)
         if not os.path.exists(path):
-            raise FileNotFoundError(f"CSV file not found: {path}")
+            raise FileNotFoundError(f"File not found: {path}")
         self.selected_filename = filename
-        self.df = pd.read_csv(path)
+
+        if filename.endswith(".csv"):
+            self.df = pd.read_csv(path)
+        elif filename.endswith(".xlsx"):
+            self.df = pd.read_excel(path)
+        else:
+            raise ValueError("Unsupported file format. Please use .csv or .xlsx")
+
         self.model = genai.GenerativeModel("gemini-2.0-flash")
 
     def ask(self, question: str):
@@ -48,35 +55,41 @@ class GeminiCSVAgent:
         preview = self.df.head(5).to_csv(index=False)
         schema = ", ".join(f"{col} ({dtype})" for col, dtype in zip(self.df.columns, self.df.dtypes))
         prompt = f"""
-You are a data analyst. Here's a CSV dataset with these columns:
+You are a data analyst. Here's a dataset with these columns:
 {schema}
 
 Here are the first few rows:
 {preview}
-cd 
+
 Answer the following user question using only this data:
 {question}
         """.strip()
 
-        response = self.model.generate_content(prompt)
-        return response.text
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            return f"⚠️ Error during response generation: {e}"
 
 
-""" # 🧪 CLI Runner
+# 🧪 CLI Runner
 if __name__ == "__main__":
     agent = GeminiCSVAgent()
 
-    print("🕓 Waiting for a CSV file to be uploaded to /uploads ...")
+    print("🕓 Waiting for a file to be uploaded ")
     files = agent.wait_for_file()
-    print("✅ Found CSV files:")
+    print("✅ Found data files:")
     for f in files:
         print(" -", f)
 
-    selected = input("📄 Enter the CSV filename to analyze: ").strip()
+    selected = input("📄 Enter the filename to analyze: ").strip()
     try:
         agent.select_file(selected)
     except FileNotFoundError:
         print("❌ File not found.")
+        exit()
+    except ValueError as ve:
+        print("❌", ve)
         exit()
 
     print("\n🤖 Ask me anything about your data (type 'exit' to quit)\n")
@@ -90,4 +103,3 @@ if __name__ == "__main__":
             print("🤖 Gemini:", result, "\n")
         except Exception as e:
             print("❌ Error:", e, "\n")
- """
