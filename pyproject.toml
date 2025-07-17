@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "theBrain"
+version = "0.1.0"
+description = "Let your office talk"
+authors = [{name = "Smart Solution Departments", email = "aabdoh@joe13th.com"}]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+
+dependencies = [
+    "fastapi>=0.95.0",
+    "uvicorn>=0.21.0",
+    "transformers>=4.30.0",   # Added transformers for NLP models
+    "langchain>=0.0.183",      # Added LangChain for chaining LLMs
+    "langgraph>=0.0.1",        # Added LangGraph for graph-based workflows
+    "google-api-python-client>=2.85.0",  # Added for Google Calendar API
+    "google-auth>=2.16.1",      # Added for OAuth authentication
+    "google-auth-oauthlib>=0.5.2",  # OAuth for Google API
+    "google-auth-httplib2>=0.1.0",  # For HTTP client handling in Google API
+    "dateparser>=1.1.3",        # For natural language date parsing
+    "pytz>=2023.3",             # Time zone handling
+    "pydantic>=1.10.5",         # Data validation and settings management
+    "pytest>=7.2.2",            # For testing
+    "httpx>=0.23.0",            # HTTP client for async testing
+    "opencv-python>=4.11.0.86",
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "onnxruntime",
+    "onnx",
+    "google-genai",
+    "cnocr[ort-cpu]",
+    "openpyxl",
+    "python-dotenv",
+    "paddlepaddle",
+    "paddleocr",
+    "langchain_community",
+    "langchain-google-genai",
+    "pymilvus",
+    "pytest",
+    "pytest-mock",
+    "sendgrid",
+    "pymilvus[model]", 
+    "reportlab",
+    "timezonefinder",
+    "geopy==2.4.1",
+    "google-generativeai==0.8.5",
+    "slack_sdk==3.35.0",
+    "trello==0.9.7.3",
+    "pyjwt==2.10.1",
+    "langchain_milvus==0.2.0"
+
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=3.0",
+    "httpx>=0.23.0",       # For async test clients
+    "black>=22.0",         # Code formatting
+    "isort>=5.0",          # Import sorting
+    "mypy>=1.0"            # Static typing
+]
+test = [
+    "pytest>=7.0",
+    "pytest-cov>=3.0",
+    "httpx>=0.23.0"
+]
+
+gpu = [
+    "onnxruntime-gpu"
+]
+
+[project.urls]
+Homepage = "https://github.com/azooz95/theBrain"
+
+[tool.pip]
+index-url = "https://download.pytorch.org/whl/cu118"
+
+[tool.setuptools]
+packages = ["smart_graph"]
+package-dir = {"" = "src"}
