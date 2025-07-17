@@ -46,24 +46,13 @@ Reply with only \"yes\" or \"no\"."""
         files = agent.get_available_files()
         if not files:
             return ToolMessage(
-                content="⏳ No CSV or XLSX files found. Please upload a file to `/uploads`.",
+                content="⏳ No files found. Please upload a file.",
                 name="analyze_data",
                 tool_call_id="tool_call_analyze_data"
             )
 
-        # Step 1: Ask user to pick file
-        if "filename" not in session:
-            numbered_list = "\n".join(f"{i+1}. {f}" for i, f in enumerate(files))
-            session["agent"] = agent
-            SESSION_CACHE[user_id] = session
-            return ToolMessage(
-                content=f"✅ Found data files:\n{numbered_list}\n\n📄 Please tell me the **number** or **name** of the file you'd like to analyze.",
-                name="analyze_data",
-                tool_call_id="tool_call_analyze_data"
-            )
-
-        # Step 2: Select file by index or name
-        if "filename" not in session or not session.get("file_loaded"):
+        # Step 1 & 2: Select file if not loaded yet
+        if not session.get("file_loaded"):
             selected_file = None
             if input_clean.isdigit():
                 index = int(input_clean) - 1
@@ -90,20 +79,22 @@ Reply with only \"yes\" or \"no\"."""
                         name="analyze_data",
                         tool_call_id="tool_call_analyze_data"
                     )
-            else:
-                numbered_list = "\n".join(f"{i+1}. {f}" for i, f in enumerate(files))
-                return ToolMessage(
-                    content=f"⚠️ Couldn't find that file. Please type one of the following:\n{numbered_list}",
-                    name="analyze_data",
-                    tool_call_id="tool_call_analyze_data"
-                )
 
+            # Prompt user to select valid file
+            numbered_list = "\n".join(f"{i+1}. {f}" for i, f in enumerate(files))
+            session["agent"] = agent
+            SESSION_CACHE[user_id] = session
+            return ToolMessage(
+                content=f"✅ Found data files:\n{numbered_list}\n\n📄 Please tell me the file name or number you'd like to analyze.",
+                name="analyze_data",
+                tool_call_id="tool_call_analyze_data"
+            )
 
-        # Step 3: Answer user question
+        # Step 3: Answer questions about loaded file
         if session.get("file_loaded"):
             result = agent.ask(input)
             return ToolMessage(
-                content=f"🤖 {result}\n\n💬 You can ask more questions or say 'bye' to end the session.",
+                content=f"🤖 {result}\n\n💬 Any thing else ?.",
                 name="analyze_data",
                 tool_call_id="tool_call_analyze_data"
             )
