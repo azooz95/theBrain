@@ -1,25 +1,31 @@
+import os
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 from src.smart_graph.agents.DataAnalysis import GeminiCSVAgent
 import google.generativeai as genai
-import os
 from dotenv import load_dotenv
 
+# Load API Key for Gemini
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 gemini_model = genai.GenerativeModel("gemini-2.0-flash")
 
+# In-memory session tracking
 SESSION_CACHE = {}
 
 @tool
 def analyze_data(input: str) -> ToolMessage:
+    """
+    Interactively analyzes uploaded CSV/XLSX files using Gemini + Pandas.
+    The tool supports: listing files, selecting by name or number, answering user questions, and gracefully ending the conversation.
+    """
     user_id = "default_user"
     session = SESSION_CACHE.get(user_id, {})
     agent = session.get("agent") or GeminiCSVAgent()
 
     input_clean = input.strip().lower()
 
-    # Step 0: friendly exit detection
+    # Step 0: Friendly exit detection
     if session.get("file_loaded"):
         try:
             intent_prompt = f"""Determine if this message means the user wants to end the conversation:
@@ -74,7 +80,7 @@ Reply with only \"yes\" or \"no\"."""
                     session["agent"] = agent
                     SESSION_CACHE[user_id] = session
                     return ToolMessage(
-                        content=f"📂 `{selected_file}` loaded! Ask me anything about the data. Type 'bye' to exit anytime.",
+                        content=f"📂 `{selected_file}` loaded successfully! Ask me anything about this file. 😊",
                         name="analyze_data",
                         tool_call_id="tool_call_analyze_data"
                     )
@@ -85,17 +91,19 @@ Reply with only \"yes\" or \"no\"."""
                         tool_call_id="tool_call_analyze_data"
                     )
             else:
+                numbered_list = "\n".join(f"{i+1}. {f}" for i, f in enumerate(files))
                 return ToolMessage(
-                    content="⚠️ I couldn't match your input to any file. Please type the **number** or exact name of one of the listed files.",
+                    content=f"⚠️ Couldn't find that file. Please type one of the following:\n{numbered_list}",
                     name="analyze_data",
                     tool_call_id="tool_call_analyze_data"
                 )
 
-        # Step 3: Analyze question
+
+        # Step 3: Answer user question
         if session.get("file_loaded"):
             result = agent.ask(input)
             return ToolMessage(
-                content=f"🤖 {result}\n\n💬 You can ask more or say 'bye' to end.",
+                content=f"🤖 {result}\n\n💬 You can ask more questions or say 'bye' to end the session.",
                 name="analyze_data",
                 tool_call_id="tool_call_analyze_data"
             )
