@@ -1,3 +1,5 @@
+# main_graph.py
+
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -11,6 +13,7 @@ from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
 from src.smart_graph.tools.task_tool import create_or_report_task
 from src.smart_graph.tools.data_tool import analyze_data
+from src.smart_graph.tools.sql_tool import query_database  
 
 from src.smart_graph.utils.state import AgentState
 from langgraph.checkpoint.memory import InMemorySaver
@@ -23,7 +26,13 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Step 2: Register tools ---
-tools = [create_contract, schedule_meeting, create_or_report_task, analyze_data]
+tools = [
+    create_contract,
+    schedule_meeting,
+    create_or_report_task,
+    analyze_data,
+    query_database  
+]
 tool_node = ToolNode(tools=tools)
 
 # --- Step 3: Agent logic with multi-turn memory ---
@@ -56,6 +65,7 @@ You are a smart AI assistant in a multi-agent system. Classify the **latest user
 - schedule_meeting
 - create_or_report_task
 - analyze_data
+- query_database
 - general_query
 
 Context:
@@ -71,7 +81,13 @@ Context:
             "current_agent": None
         }
 
-    if intent in ["create_contract", "schedule_meeting", "create_or_report_task", "analyze_data"]:
+    if intent in [
+        "create_contract",
+        "schedule_meeting",
+        "create_or_report_task",
+        "analyze_data",
+        "query_database"  
+    ]:
         return {
             "messages": messages + [
                 AIMessage(content="", tool_calls=[{

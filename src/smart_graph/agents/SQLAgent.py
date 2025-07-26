@@ -51,7 +51,9 @@ def sql_agent_node(state: dict) -> dict:
     result = agent.invoke(query)
     return {"sql_result": result}
 
-if __name__ == "__main__":
+
+
+""" if __name__ == "__main__":
     try:
         print(f"✅ Connected to database at: {DEFAULT_DB_PATH}")
         agent = create_sql_agent()
@@ -79,4 +81,4 @@ if __name__ == "__main__":
                 print(f"❌ Error running query: {e}")
 
     except Exception as err:
-        print(f"❌ Failed to initialize agent: {err}")
+        print(f"❌ Failed to initialize agent: {err}") """
