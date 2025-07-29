@@ -35,25 +35,13 @@ tools = [
 ]
 tool_node = ToolNode(tools=tools)
 
-# --- Step 3: Agent logic with multi-turn memory ---
+# --- Step 3: Agent logic with smart switching ---
 def agent_logic(state: AgentState) -> AgentState:
     messages = state["messages"]
     user_input = messages[-1].content.strip()
     current_agent = state.get("current_agent")
 
-    if current_agent:
-        return {
-            "messages": messages + [
-                AIMessage(content="", tool_calls=[{
-                    "name": current_agent,
-                    "args": {"input": user_input},
-                    "id": f"tool_call_{current_agent}"
-                }])
-            ],
-            "current_agent": current_agent
-        }
-
-    # Otherwise: detect user intent
+    # Detect intent from message
     context = "\n".join(
         f"{m.type.upper()}: {m.content.strip()}"
         for m in messages[-5:] if hasattr(m, "content")
@@ -67,6 +55,9 @@ You are a smart AI assistant in a multi-agent system. Classify the **latest user
 - analyze_data
 - query_database
 - general_query
+
+If the message continues the current task, return the same agent name.
+If the message starts a new topic, return the new agent name.
 
 Context:
 {context}
@@ -86,7 +77,7 @@ Context:
         "schedule_meeting",
         "create_or_report_task",
         "analyze_data",
-        "query_database"  
+        "query_database"
     ]:
         return {
             "messages": messages + [
@@ -99,6 +90,7 @@ Context:
             "current_agent": intent
         }
 
+    # Otherwise: reply directly
     try:
         reply = model.generate_content(user_input).text.strip()
         return {
