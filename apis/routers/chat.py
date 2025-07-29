@@ -1,30 +1,59 @@
-# fast router
-from langchain_core.messages import HumanMessage, AIMessage
-from fastapi import APIRouter, Depends, HTTPException, FastAPI, WebSocket, WebSocketDisconnect
+import os
+import shutil
+from uuid import uuid4
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    WebSocket,
+    WebSocketDisconnect,
+    FastAPI,
+)
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, ConfigDict
-from apis.token_generator import get_current_user, verify_token
 from starlette.websockets import WebSocketState
+
+from apis.token_generator import get_current_user, verify_token
 from src.smart_graph.graph.main_graph import app as graph_app
 
 app = FastAPI()
-
-class ChatRequest(BaseModel):
-    message: str
-    model_config = ConfigDict(extra='forbid')
-
 router = APIRouter()
 
-# REST API endpoint
+# Uploads directory
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# REST API endpoint (POST /chat)
 @router.post("/chat")
-async def chat_endpoint(request: ChatRequest, user_info: str = Depends(get_current_user)):
-    if not request.message:
+async def chat_endpoint(
+    message: str = Form(...),
+    attachment: UploadFile = File(None),
+    user_info: str = Depends(get_current_user)
+):
+    if not message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    user_input = request.message
+    saved_filename = None
+    if attachment:
+        file_ext = os.path.splitext(attachment.filename)[1]
+        saved_filename = f"{uuid4().hex}{file_ext}"
+        file_path = os.path.join(UPLOAD_DIR, saved_filename)
+
+        with open(file_path, "wb") as f:
+            shutil.copyfileobj(attachment.file, f)
+
+        print(f"📁 Uploaded file saved to: {file_path}")
+
+    user_input = message
     inputs = {"messages": [HumanMessage(content=user_input)]}
+    config = {"configurable": {"thread_id": "1"}}
 
     last_response = None
-    for output in graph_app.stream(inputs):
+    for output in graph_app.stream(inputs, config):
         for _, val in output.items():
             if isinstance(val, dict) and "messages" in val:
                 messages = val["messages"]
@@ -32,11 +61,20 @@ async def chat_endpoint(request: ChatRequest, user_info: str = Depends(get_curre
                     response = messages[-1].content
                     if response and response != last_response:
                         last_response = response
-                        return {"response": response, "user_id": user_info}
+                        return {
+                            "response": response,
+                            "user_id": user_info,
+                            "uploaded_file": saved_filename,
+                        }
 
-    return {"response": f"Received message: {request.message}, user_id: {user_info}"}
+    return {
+        "response": f"Received message: {message}",
+        "user_id": user_info,
+        "uploaded_file": saved_filename,
+    }
 
-# WebSocket endpoint
+
+# WebSocket endpoint (/ws/chat)
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
     token = websocket.headers.get("authorization")
@@ -70,7 +108,7 @@ async def websocket_chat(websocket: WebSocket):
             inputs = {"messages": [HumanMessage(content=data)]}
             last_response = None
             thread_id = {"configurable": {"thread_id": "1"}}
-            
+
             for output in graph_app.stream(inputs, thread_id):
                 for _, val in output.items():
                     if isinstance(val, dict) and "messages" in val:
