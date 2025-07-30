@@ -127,7 +127,7 @@ async def websocket_chat(websocket: WebSocket):
             await websocket.send_text(f"Error: {str(e)}")
             await websocket.close()
 
-# Mount the router and run
+
 app.include_router(router)
 
 if __name__ == "__main__":
