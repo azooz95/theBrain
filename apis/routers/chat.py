@@ -38,7 +38,7 @@ async def chat_endpoint(
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     saved_filename = None
-    if attachment:
+    if attachment.filename:
         file_ext = os.path.splitext(attachment.filename)[1]
         saved_filename = f"{uuid4().hex}{file_ext}"
         file_path = os.path.join(UPLOAD_DIR, saved_filename)
