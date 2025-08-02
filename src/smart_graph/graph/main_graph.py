@@ -71,7 +71,6 @@ Context:
             "messages": messages + [AIMessage(content="❌ Failed to detect intent.")],
             "current_agent": None
         }
-
     if intent in [
         "create_contract",
         "schedule_meeting",
@@ -79,6 +78,19 @@ Context:
         "analyze_data",
         "query_database"
     ]:
+       
+       # Reset contract session if switching back to contract agent
+        if intent == "create_contract" and current_agent != "create_contract":
+            try:
+                from src.smart_graph.tools import contract_tool
+                from src.smart_graph.agents import Create_Contract
+
+                contract_tool.SESSION_CACHE["default_user"] = {}
+                Create_Contract.CONTRACT_SESSION["default_user"] = {}
+                print("[INFO] Reset contract session due to agent switch.")
+            except Exception as e:
+                print(f"[WARNING] Failed to reset contract session: {e}")
+
         return {
             "messages": messages + [
                 AIMessage(content="", tool_calls=[{
@@ -89,6 +101,7 @@ Context:
             ],
             "current_agent": intent
         }
+
 
     # Otherwise: reply directly
     try:
