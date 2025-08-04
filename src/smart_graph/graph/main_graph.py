@@ -1,4 +1,3 @@
-# main_graph.py
 
 import os
 import google.generativeai as genai
@@ -17,12 +16,22 @@ from src.smart_graph.tools.sql_tool import query_database
 
 from src.smart_graph.utils.state import AgentState
 from langgraph.checkpoint.memory import InMemorySaver
+from google.generativeai.types import GenerationConfig  
 
 checkpointer = InMemorySaver()
 
 # --- Step 1: Load environment and configure Gemini ---
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# ✅ NEW: configure generation behavior
+gen_config = GenerationConfig(
+    temperature=0.6,
+    top_p=0.9,
+    top_k=40,
+    max_output_tokens=100  # ✅ Limit response length (around 2–3 sentences)
+)
+
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Step 2: Register tools ---
@@ -64,13 +73,14 @@ Context:
 """.strip()
 
     try:
-        intent = model.generate_content(intent_prompt).text.strip().lower()
+        intent = model.generate_content(intent_prompt, generation_config=gen_config).text.strip().lower()
         print(f"[DEBUG] Detected intent: {intent}")
     except Exception:
         return {
             "messages": messages + [AIMessage(content="❌ Failed to detect intent.")],
             "current_agent": None
         }
+
     if intent in [
         "create_contract",
         "schedule_meeting",
@@ -102,10 +112,9 @@ Context:
             "current_agent": intent
         }
 
-
-    # Otherwise: reply directly
+    # Otherwise: reply directly (with shorter response enforced)
     try:
-        reply = model.generate_content(user_input).text.strip()
+        reply = model.generate_content(user_input, generation_config=gen_config).text.strip()
         return {
             "messages": messages + [AIMessage(content=reply)],
             "current_agent": None
