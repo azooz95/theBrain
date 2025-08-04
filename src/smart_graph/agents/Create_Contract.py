@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 from uuid import uuid4
 from docx import Document
-from transformers import pipeline
+# from transformers import pipeline  # Commented: no longer using LLM
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
@@ -29,11 +29,12 @@ class ContractGenerator:
         self.docx_output = f"{self.output_base}.docx"
         self.pdf_output = f"{self.output_base}.pdf"
 
-        try:
-            self.question_generator = pipeline("text2text-generation", model="google/flan-t5-base")
-        except Exception as e:
-            logging.error(f"Error loading Hugging Face model: {e}")
-            raise RuntimeError("Model loading failed.")
+        # Commented out LLM model loading
+        # try:
+        #     self.question_generator = pipeline("text2text-generation", model="google/flan-t5-base")
+        # except Exception as e:
+        #     logging.error(f"Error loading Hugging Face model: {e}")
+        #     raise RuntimeError("Model loading failed.")
 
     def extract_placeholders(self) -> list:
         try:
@@ -48,60 +49,67 @@ class ContractGenerator:
             logging.error(f"Failed to extract placeholders: {e}")
             raise
 
-    def generate_questions(self) -> dict:
-        questions = {}
-        for placeholder in self.placeholders:
-            contextual = self._generate_contextual_question(placeholder)
-            if contextual == "FALLBACK":
-                prompt = f"Generate a professional question for a contract about '{placeholder}'."
-                response = self.question_generator(prompt)[0]['generated_text']
-                questions[placeholder] = self._postprocess_question(response)
-            else:
-                questions[placeholder] = contextual
-        return questions
+    """  Commented out LLM question generation
+      def generate_questions(self) -> dict:
+          questions = {}
+          for placeholder in self.placeholders:
+              contextual = self._generate_contextual_question(placeholder)
+              if contextual == "FALLBACK":
+                  prompt = f"Generate a professional question for a contract about '{placeholder}'."
+                  response = self.question_generator(prompt)[0]['generated_text']
+                  questions[placeholder] = self._postprocess_question(response)
+              else:
+                  questions[placeholder] = contextual
+          return questions
 
-    def _generate_contextual_question(self, placeholder):
-        placeholder = placeholder.strip().upper()
-        context_map = {
-            "DATE": "What is the effective date of the contract?",
-            "DISCLOSING_PARTY_NAME": "Who is the disclosing party?",
-            "RECEIVING_PARTY_NAME": "Who will receive the information?",
-            "CONFIDENTIAL_INFO_DESCRIPTION": "What information is considered confidential?",
-            "DURATION": "What is the duration of this contract?"
-        }
-        return context_map.get(placeholder, "FALLBACK")
+      def _generate_contextual_question(self, placeholder):
+          placeholder = placeholder.strip().upper()
+          context_map = {
+              "DATE": "What is the effective date of the contract?",
+              "DISCLOSING_PARTY_NAME": "Who is the disclosing party?",
+              "RECEIVING_PARTY_NAME": "Who will receive the information?",
+              "CONFIDENTIAL_INFO_DESCRIPTION": "What information is considered confidential?",
+              "DURATION": "What is the duration of this contract?"
+         }
+          return context_map.get(placeholder, "FALLBACK")
 
-    def _postprocess_question(self, q):
-        q = q.strip()
-        if q.endswith("?"):
-            return q
-        if not q:
-            return "Please provide a value."
-        return q[0].capitalize() + q[1:] + "?"
+      def _postprocess_question(self, q):
+          q = q.strip()
+          if q.endswith("?"):
+              return q
+          if not q:
+              return "Please provide a value."
+          return q[0].capitalize() + q[1:] + "?" """
 
     def ask_next_question(self, user_id="default_user", answer=None) -> str:
         session = CONTRACT_SESSION.get(user_id, {})
         if not session:
-            # Init session
+            # First interaction: extract placeholders
             self.extract_placeholders()
-            questions = self.generate_questions()
             session = {
-                "questions": questions,
-                "fields": list(questions.keys()),
+                "fields": self.placeholders,
                 "answers": {},
-                "current_index": 0,
-                "template": self.template_path
+                "template": self.template_path,
+                "answered": False
             }
             CONTRACT_SESSION[user_id] = session
-            return f"📄 Starting contract creation.\n{questions[session['fields'][0]]}"
+            placeholder_list = ", ".join(session["fields"])
+            return (
+                "📄 Starting contract creation.\n"
+                "Please enter the following values separated by commas:\n\n"
+                f"{placeholder_list}"
+            )
 
-        if answer is not None:
-            current_field = session["fields"][session["current_index"]]
-            session["answers"][current_field] = answer
-            session["current_index"] += 1
+        if not session.get("answered") and answer is not None:
+            values = [v.strip() for v in answer.split(",")]
+            if len(values) != len(session["fields"]):
+                return (
+                    f"⚠️ You provided {len(values)} values but {len(session['fields'])} are required.\n"
+                    "Please try again. Make sure values are in correct order, separated by commas."
+                )
+            session["answers"] = dict(zip(session["fields"], values))
+            session["answered"] = True
 
-        if session["current_index"] >= len(session["fields"]):
-            # All answered → fill contract
             self.responses = session["answers"]
             CONTRACT_SESSION.pop(user_id, None)
 
@@ -112,11 +120,13 @@ class ContractGenerator:
                 f"📄 DOCX: `{self.docx_output}`\n📑 PDF: `{self.pdf_output}`"
             )
 
-        # Ask next question
-        next_field = session["fields"][session["current_index"]]
-        question = session["questions"][next_field]
-        CONTRACT_SESSION[user_id] = session
-        return question
+        # If waiting for input again
+        placeholder_list = ", ".join(session["fields"])
+        return (
+            "📄 Contract creation in progress.\n"
+            "Please enter all values again (comma-separated):\n\n"
+            f"{placeholder_list}"
+        )
 
     def fill_placeholders(self, responses: dict):
         try:

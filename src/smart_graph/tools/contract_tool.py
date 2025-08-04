@@ -120,25 +120,40 @@ def create_contract(input: str = "") -> ToolMessage:
                     )
 
             else:
+                # ✅ New logic: use placeholder names directly instead of generating LLM questions
                 placeholders = generator.extract_placeholders()
-                questions = generator.generate_questions()
-                fields = list(questions.keys())
-                PLACEHOLDER_CACHE[template_path] = fields
-                session["awaiting_fields"] = fields
+                PLACEHOLDER_CACHE[template_path] = placeholders
+                session["awaiting_fields"] = placeholders
                 SESSION_CACHE[user_id] = session
 
-                question_list = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions.values())])
+                placeholder_list = "\n".join([f"{i+1}. {p}" for i, p in enumerate(placeholders)])
                 prompt = (
-                    "📝 Please answer the following questions in **one message**, separated by commas:\n\n"
-                    f"{question_list}\n\n"
+                    "📝 Please enter the following values in order, separated by commas:\n\n"
+                    f"{placeholder_list}\n"
                 )
-
                 return ToolMessage(
                     content=prompt,
                     name="create_contract",
                     tool_call_id="tool_call_create_contract"
                 )
 
+                """   🔴 Old logic using LLM-generated questions (no longer used)
+                  questions = generator.generate_questions()
+                  fields = list(questions.keys())
+                  PLACEHOLDER_CACHE[template_path] = fields
+                  session["awaiting_fields"] = fields
+                  SESSION_CACHE[user_id] = session
+                  question_list = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions.values())])
+                  prompt = (
+                      "📝 Please answer the following questions in **one message**, separated by commas:\n\n"
+                      f"{question_list}\n\n"
+                  )
+                  return ToolMessage(
+                      content=prompt,
+                      name="create_contract",
+                      tool_call_id="tool_call_create_contract"
+                  )
+ """
         return ToolMessage(
             content="⚠️ You already submitted your answers. Please start a new session with `single` or `multiple`.",
             name="create_contract",
