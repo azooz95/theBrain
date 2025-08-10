@@ -1,7 +1,7 @@
 
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from src.smart_graph.agents.SQLAgent import create_sql_agent,  format_friendly_response
+from src.smart_graph.agents.SQL_Agent import create_sql_agent,  format_friendly_response
 
 
 @tool

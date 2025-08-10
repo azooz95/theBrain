@@ -1,7 +1,7 @@
 import os
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
-from src.smart_graph.agents.DataAnalysis import GeminiCSVAgent
+from src.smart_graph.agents.Data_Analysis import GeminiCSVAgent
 import google.generativeai as genai
 from dotenv import load_dotenv
 

@@ -51,8 +51,7 @@ async def chat_endpoint(
     user_input = message
     inputs = {"messages": [HumanMessage(content=user_input)]}
     config = {"configurable": {"thread_id": "1"}}
-
-    last_response = None
+    last_response = None     
     for output in graph_app.stream(inputs, config):
         for _, val in output.items():
             if isinstance(val, dict) and "messages" in val:
@@ -62,18 +61,20 @@ async def chat_endpoint(
                     if response and response != last_response:
                         last_response = response
                         return {
-                            "response": response,
-                            "user_id": user_info,
-                            "uploaded_file": saved_filename,
-                        }
+                                "response": response,
+                                "user_id": user_info,
+                                "uploaded_file": saved_filename,
+                            }   
+    
 
     return {
-        "response": f"Received message: {message}",
-        "user_id": user_info,
-        "uploaded_file": saved_filename,
-    }
-
-
+            "response": f"Received message: {message}",
+            "user_id": user_info,
+            "uploaded_file": saved_filename,
+        } 
+   
+        
+    
 # WebSocket endpoint (/ws/chat)
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
