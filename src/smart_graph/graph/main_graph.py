@@ -1,65 +1,150 @@
+
 import os
-import google.generativeai as genai
+import re
+from typing import Optional, List
+
 from dotenv import load_dotenv
+import google.generativeai as genai
+
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage, trim_messages
-from typing import Literal
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import RunnableConfig
 
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    AIMessage,
+    ToolMessage,
+    SystemMessage,
+    trim_messages,
+)
+
+# --- Project imports (keep your original modules) ---
+from src.smart_graph.utils.state import AgentState
 from src.smart_graph.tools.contract_tool import create_contract
 from src.smart_graph.tools.meeting_tool import schedule_meeting
 from src.smart_graph.tools.task_tool import create_or_report_task
 from src.smart_graph.tools.data_tool import analyze_data
 from src.smart_graph.tools.sql_tool import query_database
 
-from src.smart_graph.utils.state import AgentState
-from langgraph.checkpoint.memory import InMemorySaver
-from google.generativeai.types import GenerationConfig
 
-
-checkpointer = InMemorySaver()
-
+# 0) Environment & Model
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-
-gen_config = GenerationConfig(
-    temperature=0.6,
+gen_config = genai.types.GenerationConfig(
+    temperature=0.3,
     top_p=0.9,
     top_k=40,
-    max_output_tokens=100  
+    max_output_tokens=256,
 )
 
+# Use the flash model by default (adjust if you prefer pro)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 
+def _word_token_counter(text: str) -> int:
+    return len(str(text).split())
+
 TRIM_CONFIG = {
     "strategy": "last",
-    "token_counter": len,     
-    "max_tokens": 10,         
+    "token_counter": _word_token_counter,  
+    "max_tokens": 100,                      # per your request
     "start_on": "human",
     "end_on": ("human", "tool"),
     "include_system": True,
     "allow_partial": False,
 }
 
-# --- Step 2: Register tools ---
+
+
+# 2) Simple Entity/Profile Memory (in-process)
+
+PROFILE_STORE: dict[str, dict] = {}
+
+def extract_and_store_name(text: str, thread_id: str) -> None:
+    """
+    Capture user name from phrases like:
+      - 'my name is Omneya'
+      - "I'm Omneya"
+    Extend/adjust the regexes based on your domain data.
+    """
+    if not text:
+        return
+    m = re.search(r"\bmy\s+name\s+is\s+([A-Za-z][\w'\-]+)", text, re.I)
+    if not m:
+        m = re.search(r"\bI\s*'?m\s+([A-Za-z][\w'\-]+)", text, re.I)
+    if m:
+        PROFILE_STORE.setdefault(thread_id, {})["name"] = m.group(1).strip()
+
+def profile_system_hint(thread_id: str) -> Optional[str]:
+    prof = PROFILE_STORE.get(thread_id, {})
+    hints: List[str] = []
+    if "name" in prof:
+        hints.append(f"User's name is {prof['name']}. Address them by name when appropriate.")
+    return " ".join(hints) if hints else None
+
+
+# 3) Utilities: Convert LangChain message history to Gemini contents
+def messages_to_gemini_contents(msgs: List[BaseMessage]) -> list:
+    """
+    Gemini expects a list of dicts: [{"role": "user"|"model", "parts":[{"text": "..."}]}, ...]
+    We map SystemMessage as a user role with an explicit [SYSTEM] prefix.
+    Tool messages are ignored for brevity; add if your tools emit textual context to the model.
+    """
+    contents = []
+    for m in msgs:
+        if isinstance(m, SystemMessage):
+            contents.append({"role": "user", "parts": [{"text": f"[SYSTEM] {m.content}"}]})
+        elif isinstance(m, HumanMessage):
+            contents.append({"role": "user", "parts": [{"text": m.content}]})
+        elif isinstance(m, AIMessage):
+            contents.append({"role": "model", "parts": [{"text": m.content}]})
+        
+    return contents
+
+
+# 4) Tools registry
 tools = [
     create_contract,
     schedule_meeting,
     create_or_report_task,
     analyze_data,
-    query_database
+    query_database,
 ]
 tool_node = ToolNode(tools=tools)
 
-# --- Step 3: Agent logic with smart switching (with TRIM) ---
-def agent_logic(state: AgentState) -> AgentState:
+
+# 5) Agent logic (classification + routing + general reply with history)
+INTENT_CLASSIFIER_PROMPT = """You are an assistant in a multi-agent system. 
+Classify the latest user message into exactly one of:
+- create_contract
+- schedule_meeting
+- create_or_report_task
+- analyze_data
+- query_database
+- general_query
+
+Return only the label.
+Latest user message:
+"""
+
+def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> AgentState:
     messages = state["messages"]
-    user_input = messages[-1].content.strip()
+    user_input = messages[-1].content.strip() if messages else ""
     current_agent = state.get("current_agent")
 
-    
+    # Obtain thread_id from runnable config; fall back to a default for safety.
+    thread_id = None
+    if config and isinstance(config, dict):
+        thread_id = (config.get("configurable") or {}).get("thread_id")
+    thread_id = thread_id or "default_thread"
+
+    # Capture entity memory (name) from the latest user message.
+    extract_and_store_name(user_input, thread_id)
+
+    # Trim the message history to keep compute predictable.
     try:
         trimmed_history = trim_messages(
             messages,
@@ -72,118 +157,112 @@ def agent_logic(state: AgentState) -> AgentState:
             allow_partial=TRIM_CONFIG["allow_partial"],
         )
     except Exception:
+        # Fallback: take last few messages if trim fails for any reason.
         trimmed_history = messages[-6:]
 
-    
-    context = "\n".join(
-        f"{m.type.upper()}: {getattr(m, 'content', '').strip()}"
-        for m in trimmed_history
-        if hasattr(m, "content")
-    )
+    # Add profile hint if we have any memorized attributes (e.g., name).
+    hint = profile_system_hint(thread_id)
+    if hint:
+        trimmed_history = [SystemMessage(content=hint)] + trimmed_history
 
-    intent_prompt = f"""
-You are a smart AI assistant in a multi-agent system. Classify the **latest user message** into one of:
-- create_contract
-- schedule_meeting
-- create_or_report_task
-- analyze_data
-- query_database
-- general_query
-
-If the message continues the current task, return the same agent name.
-If the message starts a new topic, return the new agent name.
-
-Context:
-{context}
-""".strip()
-
+    # 5.a) Classify intent (very cheap call).
     try:
-        intent = model.generate_content(intent_prompt, generation_config=gen_config).text.strip().lower()
-        print(f"[DEBUG] Detected intent: {intent}")
+        intent = model.generate_content(
+            f"{INTENT_CLASSIFIER_PROMPT}{user_input}",
+            generation_config=gen_config,
+        ).text.strip()
     except Exception:
-        return {
-            "messages": messages + [AIMessage(content="❌ Failed to detect intent.")],
-            "current_agent": None
-        }
+        intent = "general_query"
 
-    if intent in [
-        "create_contract",
-        "schedule_meeting",
-        "create_or_report_task",
-        "analyze_data",
-        "query_database"
-    ]:
-
-        # Reset contract session if switching back to contract agent
+    # 5.b) Route to a specific tool if needed.
+    if intent in {"create_contract", "schedule_meeting", "create_or_report_task", "analyze_data", "query_database"}:
+        
         if intent == "create_contract" and current_agent != "create_contract":
             try:
+                
                 from src.smart_graph.tools import contract_tool
                 from src.smart_graph.agents import Create_Contract
-
                 contract_tool.SESSION_CACHE["default_user"] = {}
                 Create_Contract.CONTRACT_SESSION["default_user"] = {}
                 print("[INFO] Reset contract session due to agent switch.")
             except Exception as e:
-                print(f"[WARNING] Failed to reset contract session: {e}")
+                print(f"[WARNING] Contract session reset failed: {e}")
 
+        # Ask ToolNode to execute by emitting a tool call.
         return {
             "messages": messages + [
-                AIMessage(content="", tool_calls=[{
-                    "name": intent,
-                    "args": {"input": user_input},
-                    "id": f"tool_call_{intent}"
-                }])
+                AIMessage(
+                    content="",
+                    tool_calls=[{
+                        "name": intent,
+                        "args": {"input": user_input},
+                        "id": f"tool_call_{intent}"
+                    }]
+                )
             ],
-            "current_agent": intent
+            "current_agent": intent,
         }
 
-    # Otherwise: reply directly (short response enforced via gen_config)
+    # 5.c) General reply path — now with HISTORY (trimmed) rather than single-turn.
     try:
-        reply = model.generate_content(user_input, generation_config=gen_config).text.strip()
+        gemini_contents = messages_to_gemini_contents(trimmed_history)
+        reply = model.generate_content(
+            gemini_contents,
+            generation_config=gen_config
+        ).text.strip()
         return {
             "messages": messages + [AIMessage(content=reply)],
-            "current_agent": None
+            "current_agent": None,
         }
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR] General reply failed: {e}")
         return {
-            "messages": messages + [AIMessage(content="⚠️ Gemini failed to respond.")],
-            "current_agent": None
+            "messages": messages + [AIMessage(content="Sorry, I faced an internal error. Please try again.")],
+            "current_agent": None,
         }
 
-# --- Step 4: Respond with tool output ---
+
+# 6) Respond with tool output
 def respond_with_tool(state: AgentState) -> AgentState:
     tool_messages = [m for m in state["messages"] if isinstance(m, ToolMessage)]
     if tool_messages:
         return {
             "messages": state["messages"] + [AIMessage(content=tool_messages[-1].content)],
-            "current_agent": None
+            "current_agent": None,
         }
     return {
         "messages": state["messages"] + [AIMessage(content="⚠️ Tool returned nothing.")],
-        "current_agent": None
+        "current_agent": None,
     }
 
-# --- Step 5: Should we continue? ---
+
+# 7) Control flow edges
 def should_continue(state: AgentState) -> str:
+    """
+    If the last AI message has tool_calls, route to the tool node.
+    Otherwise, end.
+    """
     last = state["messages"][-1]
     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
         return "tool"
     return "end"
 
-# --- Step 6: Build the graph ---
-agent_builder = StateGraph(AgentState)
-agent_builder.add_node("llm_call", agent_logic)
-agent_builder.add_node("tool", tool_node)
-agent_builder.add_node("respond", respond_with_tool)
 
-agent_builder.set_entry_point("llm_call")
-agent_builder.add_conditional_edges("llm_call", should_continue, {
+# 8) Build & Compile the graph (single shared checkpointer)
+checkpointer = InMemorySaver()
+
+graph = StateGraph(AgentState)
+graph.add_node("llm_call", agent_logic)
+graph.add_node("tool", tool_node)
+graph.add_node("respond", respond_with_tool)
+
+graph.set_entry_point("llm_call")
+graph.add_conditional_edges("llm_call", should_continue, {
     "tool": "tool",
-    "end": END
+    "end": END,
 })
-agent_builder.add_edge("tool", "respond")
-agent_builder.add_edge("respond", END)
+graph.add_edge("tool", "respond")
+graph.add_edge("respond", END)
 
-# --- Step 7: Compile the graph ---
-agent = agent_builder.compile(checkpointer=checkpointer)
-app = agent
+# The compiled app. IMPORTANT: always pass a stable thread_id in config when invoking.
+app = graph.compile(checkpointer=checkpointer)
