@@ -383,7 +383,7 @@ async def ingest_inputs(user_input: str, rag: LangChainRAG) -> int:
 
 
 # CLI
-
+""" 
 def main():
     load_dotenv(override=True)
 
@@ -456,4 +456,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nInterrupted by user.")
+        print("\nInterrupted by user.") """
