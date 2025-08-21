@@ -10,6 +10,8 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from dotenv import load_dotenv
 import os
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 
 load_dotenv()
 
@@ -18,15 +20,36 @@ class MeetingSchedulingAgent:
 
     def __init__(self):
         self.service = self.initialize_google_calendar()
-        self._history = ""  # accumulate multi-turn inputs
+        self._history = ""
 
     def initialize_google_calendar(self) -> Any:
         creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH")
         if not creds_path or not os.path.exists(creds_path):
             raise FileNotFoundError("❌ GOOGLE_CREDENTIALS_PATH not set or file does not exist.")
+
+        token_path = os.getenv("GOOGLE_TOKEN_PATH", "token.json")
+        creds = None
+
+       
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, self.SCOPES)
+
         
-        flow = InstalledAppFlow.from_client_secrets_file(creds_path, self.SCOPES)
-        creds = flow.run_local_server(port=3000)
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                creds = None  
+
+        
+        if not creds or not creds.valid:
+            flow = InstalledAppFlow.from_client_secrets_file(creds_path, self.SCOPES)
+           
+            creds = flow.run_local_server(port=3000, access_type='offline', prompt='consent')
+            with open(token_path, "w") as f:
+                f.write(creds.to_json())
+
+        
         return build("calendar", "v3", credentials=creds)
 
     def run(self, input: str) -> str:

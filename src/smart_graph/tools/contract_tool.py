@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 from src.smart_graph.agents.Create_Contract import ContractGenerator
@@ -19,6 +20,14 @@ def infer_mode_from_text(text: str) -> str:
         if word in text:
             return "multiple"
     return ""
+
+def _make_download_link(path_str: str) -> str:
+    """
+    Return a Markdown clickable link that points to a local file (file:// URI).
+    Works in most chat UIs/browsers to trigger an open/download dialog.
+    """
+    p = Path(path_str).resolve()
+    return f"[📥 Download {p.name}]({p.as_uri()})"
 
 @tool
 def create_contract(input: str = "") -> ToolMessage:
@@ -102,11 +111,14 @@ def create_contract(input: str = "") -> ToolMessage:
                     PLACEHOLDER_CACHE.pop(template_path, None)
                     SESSION_CACHE[user_id] = {}
 
+                    # ✅ Return clickable link instead of raw path
+                    link = _make_download_link(output_path)
+
                     return ToolMessage(
                         content=(
                             f"✅ Contract generated successfully!\n\n"
-                            f"📄 Download Here: `{output_path}`\n\n"
-                            f"✳️ You can now start again ."
+                            f"{link}\n\n"
+                            f"✳️ You can now start again."
                         ),
                         name="create_contract",
                         tool_call_id="tool_call_create_contract"
@@ -137,23 +149,6 @@ def create_contract(input: str = "") -> ToolMessage:
                     tool_call_id="tool_call_create_contract"
                 )
 
-                """   🔴 Old logic using LLM-generated questions (no longer used)
-                  questions = generator.generate_questions()
-                  fields = list(questions.keys())
-                  PLACEHOLDER_CACHE[template_path] = fields
-                  session["awaiting_fields"] = fields
-                  SESSION_CACHE[user_id] = session
-                  question_list = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions.values())])
-                  prompt = (
-                      "📝 Please answer the following questions in **one message**, separated by commas:\n\n"
-                      f"{question_list}\n\n"
-                  )
-                  return ToolMessage(
-                      content=prompt,
-                      name="create_contract",
-                      tool_call_id="tool_call_create_contract"
-                  )
- """
         return ToolMessage(
             content="⚠️ You already submitted your answers. Please start a new session with `single` or `multiple`.",
             name="create_contract",
@@ -170,8 +165,14 @@ def create_contract(input: str = "") -> ToolMessage:
             session["excel_template_generated"] = True
             SESSION_CACHE[user_id] = session
 
+            # ✅ Include clickable link to the generated Excel template
+            excel_link = _make_download_link(excel_template)
+
             return ToolMessage(
-                content="📊 Please fill out this Excel template for batch contract generation.",
+                content=(
+                    "📊 Please fill out this Excel template for batch contract generation.\n\n"
+                    f"{excel_link}"
+                ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"
             )
@@ -198,11 +199,14 @@ def create_contract(input: str = "") -> ToolMessage:
             PLACEHOLDER_CACHE.pop(template_path, None)
             SESSION_CACHE[user_id] = {}
 
+            # ✅ Show clickable links for each generated file
+            links = "\n".join([f"• {_make_download_link(path)}" for path in output_paths])
+
             return ToolMessage(
                 content=(
-                    f"✅ Contracts generated from Excel file `{filled_files[0]}`:\n\n" +
-                    "\n".join([f"📄 {path}" for path in output_paths]) +
-                    "\n\n✳️ You can now start again."
+                    f"✅ Contracts generated from Excel file `{filled_files[0]}`:\n\n"
+                    f"{links}\n\n"
+                    "✳️ You can now start again."
                 ),
                 name="create_contract",
                 tool_call_id="tool_call_create_contract"

@@ -26,9 +26,9 @@ from src.smart_graph.tools.meeting_tool import schedule_meeting
 from src.smart_graph.tools.task_tool import create_or_report_task
 from src.smart_graph.tools.data_tool import analyze_data
 from src.smart_graph.tools.sql_tool import query_database
-from src.smart_graph.tools.rag_tool import rag_agent  
+from src.smart_graph.tools.rag_tool import rag_agent  # <-- NEW
 
-# 0) Environment & Model 
+# 0) Environment & Model
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
@@ -41,8 +41,7 @@ gen_config = genai.types.GenerationConfig(
 
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-
-# 1) Trimming / Token counting 
+# 1) Trimming / Token counting
 def _word_token_counter(text: str) -> int:
     return len(str(text).split())
 
@@ -56,8 +55,7 @@ TRIM_CONFIG = {
     "allow_partial": False,
 }
 
-
-# 2) Simple in-process profile memory 
+# 2) Simple in-process profile memory
 PROFILE_STORE: dict[str, dict] = {}
 
 def extract_and_store_name(text: str, thread_id: str) -> None:
@@ -77,8 +75,7 @@ def profile_system_hint(thread_id: str) -> Optional[str]:
         hints.append(f"User's name is {prof['name']}. Address them by name when appropriate.")
     return " ".join(hints) if hints else None
 
-
-#  3) Convert LC messages -> Gemini contents 
+# 3) Convert LC messages -> Gemini contents
 def messages_to_gemini_contents(msgs: List[BaseMessage]) -> list:
     """Map LangChain messages to Gemini's expected format. Tool messages are ignored."""
     contents = []
@@ -86,25 +83,23 @@ def messages_to_gemini_contents(msgs: List[BaseMessage]) -> list:
         if isinstance(m, SystemMessage):
             contents.append({"role": "user", "parts": [{"text": f"[SYSTEM] {m.content}"}]})
         elif isinstance(m, HumanMessage):
-            contents.append({"role": "user", "parts": [{"text": m.content}]})
+            contents.append({"role": "user", "parts": [{"text": m.content}]} )
         elif isinstance(m, AIMessage):
-            contents.append({"role": "model", "parts": [{"text": m.content}]})
+            contents.append({"role": "model", "parts": [{"text": m.content}]} )
     return contents
 
-
-#  4) Tools registry 
+# 4) Tools registry
 tools = [
     create_contract,
     schedule_meeting,
     create_or_report_task,
     analyze_data,
     query_database,
-    rag_agent,
+    rag_agent,  # <-- NEW
 ]
 tool_node = ToolNode(tools=tools)
 
-
-#  5) Agent logic (routing + general reply) 
+# 5) Agent logic (routing + general reply)
 INTENT_CLASSIFIER_PROMPT = """You are an assistant in a multi-agent system. 
 Classify the latest user message into exactly one of:
 - create_contract
@@ -118,7 +113,7 @@ Return only the label.
 Latest user message:
 """
 
-# Patterns that indicate the user wants a friendly RAG flow without changing intent
+# Friendly RAG triggers without changing overall routing style
 FILE_QA_PATTERNS = [
     r"\bi want to ask\b.*\bquestion(s)?\b.*\bfile\b",
     r"\bquestion(s)?\b.*\babout\b.*\bfile\b",
@@ -126,7 +121,6 @@ FILE_QA_PATTERNS = [
     r"\bq&a\b.*\bfile\b",
     r"\bask\b.*\bfile\b",
 ]
-
 def _looks_like_file_qa(text: str) -> bool:
     t = text.lower()
     return any(re.search(p, t) for p in FILE_QA_PATTERNS)
@@ -165,6 +159,7 @@ def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> A
     if hint:
         trimmed_history = [SystemMessage(content=hint)] + trimmed_history
 
+    # Friendly RAG routing
     if user_input.lower().startswith("ingest:") or _looks_like_file_qa(user_input):
         return {
             "messages": messages + [
@@ -180,7 +175,7 @@ def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> A
             "current_agent": "rag_agent",
         }
 
-    # --- Standard intent classification 
+    # Standard intent classification
     try:
         intent = model.generate_content(
             f"{INTENT_CLASSIFIER_PROMPT}{user_input}",
@@ -234,22 +229,20 @@ def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> A
             "current_agent": None,
         }
 
-
-#  6) Respond with tool output 
+# 6) Respond with tool output (old routing style: do NOT keep tool sticky)
 def respond_with_tool(state: AgentState) -> AgentState:
     tool_messages = [m for m in state["messages"] if isinstance(m, ToolMessage)]
     if tool_messages:
         return {
             "messages": state["messages"] + [AIMessage(content=tool_messages[-1].content)],
-            "current_agent": None,
+            "current_agent": None,  # old strategy: release back to classifier
         }
     return {
         "messages": state["messages"] + [AIMessage(content="⚠️ Tool returned nothing.")],
         "current_agent": None,
     }
 
-
-# 7) Control flow edges 
+# 7) Control flow edges
 def should_continue(state: AgentState) -> str:
     """If the last AI message has tool_calls, route to the tool node; else end."""
     last = state["messages"][-1]
@@ -257,8 +250,7 @@ def should_continue(state: AgentState) -> str:
         return "tool"
     return "end"
 
-
-#  8) Build & Compile the graph 
+# 8) Build & Compile the graph
 checkpointer = InMemorySaver()
 
 graph = StateGraph(AgentState)
