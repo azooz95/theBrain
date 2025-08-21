@@ -351,5 +351,7 @@ class trello:
     # Optionally, remove the chart image after saving the PDF
       if os.path.exists(chart_filename):
           os.remove(chart_filename)
-      return f"📄 Report generated successfully: {pdf_filename}"
+      download_url = f"/download/{pdf_filename}"
+      return f"📄 Report generated successfully: <a href='{download_url}' download>{pdf_filename}</a>"
+
  

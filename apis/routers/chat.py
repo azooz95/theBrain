@@ -1,5 +1,6 @@
 import os
 import shutil
+import re
 from uuid import uuid4
 
 from fastapi import (
@@ -13,8 +14,8 @@ from fastapi import (
     WebSocketDisconnect,
     FastAPI,
 )
+from fastapi.responses import FileResponse
 from langchain_core.messages import HumanMessage
-from pydantic import BaseModel, ConfigDict
 from starlette.websockets import WebSocketState
 
 from apis.token_generator import get_current_user, verify_token
@@ -26,6 +27,29 @@ router = APIRouter()
 # Uploads directory
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+def _inject_download_link(text: str):
+    """
+    Finds 'Report generated successfully: <file>.pdf' and replaces <file>.pdf
+    with a clickable download link. Also returns a plain download URL.
+    """
+    if not text:
+        return text, None
+
+    # Match something like: Report generated successfully: task_progress_report.pdf
+    m = re.search(r"(Report generated successfully:\s*)([A-Za-z0-9_\-\.]+\.pdf)", text)
+    if not m:
+        return text, None
+
+    prefix = m.group(1)
+    filename = os.path.basename(m.group(2))  # prevent path traversal
+    download_path = f"/download/{filename}"
+    # HTML anchor with download attribute to trigger Save dialog
+    anchor = f"<a href='{download_path}' download>{filename}</a>"
+    new_text = text.replace(m.group(0), f"{prefix}{anchor}")
+    return new_text, download_path
+
 
 # REST API endpoint (POST /chat)
 @router.post("/chat")
@@ -60,10 +84,15 @@ async def chat_endpoint(
                     response = messages[-1].content
                     if response and response != last_response:
                         last_response = response
+
+                        # Inject a clickable download link and expose raw URL too
+                        rendered_response, download_url = _inject_download_link(response)
+
                         return {
-                            "response": response,
+                            "response": rendered_response or response,
                             "user_id": user_info,
                             "uploaded_file": saved_filename,
+                            **({"download_url": download_url} if download_url else {}),
                         }
 
     return {
@@ -73,7 +102,39 @@ async def chat_endpoint(
     }
 
 
-# WebSocket endpoint (/ws/chat)
+# Download endpoint to serve generated PDFs/DOCs
+@router.get("/download/{filename}")
+async def download_file(filename: str):
+    safe_name = os.path.basename(filename)
+    # Common search locations; add your report/contract directory if different
+    candidates = [
+        os.path.join(os.getcwd(), safe_name),
+        os.path.join(UPLOAD_DIR, safe_name),
+        os.path.join("reports", safe_name),
+        os.path.join("/mnt/data", safe_name),
+        os.path.join("contracts", safe_name),
+        os.path.join("generated", safe_name),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            # filename= sets Content-Disposition: attachment; filename="..."
+            # Let the browser open a Save dialog.
+            # Infer media type by extension—default to octet-stream if unknown.
+            ext = os.path.splitext(safe_name)[1].lower()
+            mt = "application/octet-stream"
+            if ext == ".pdf":
+                mt = "application/pdf"
+            elif ext == ".docx":
+                mt = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            elif ext == ".xlsx":
+                mt = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+            return FileResponse(path=path, filename=safe_name, media_type=mt)
+
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+# WebSocket endpoint (/ws/chat) – unchanged logic
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
     token = websocket.headers.get("authorization")

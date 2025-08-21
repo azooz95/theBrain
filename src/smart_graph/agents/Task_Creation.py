@@ -100,4 +100,3 @@ def generate_report(board) -> str:
 
     return report
 
-
