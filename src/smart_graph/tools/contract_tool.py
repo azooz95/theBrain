@@ -21,13 +21,17 @@ def infer_mode_from_text(text: str) -> str:
             return "multiple"
     return ""
 
-def _make_download_link(path_str: str) -> str:
-    """
-    Return a Markdown clickable link that points to a local file (file:// URI).
-    Works in most chat UIs/browsers to trigger an open/download dialog.
-    """
-    p = Path(path_str).resolve()
-    return f"[📥 Download {p.name}]({p.as_uri()})"
+from pathlib import Path
+from urllib.parse import urljoin, quote
+
+def _make_download_link(path_str: str,
+                        base_url: str = "https://20c455cc97ba.ngrok-free.app",
+                        route: str = "/"):  # e.g. "/download/" or "/files/"
+    file_name = Path(path_str).name                # drop any directories
+    base = base_url.rstrip('/') + '/' + route.strip('/') + '/'
+    url = urljoin(base, quote(file_name))          # URL-encode spaces etc.
+    return f"[📥 Download {file_name}]({url})"
+
 
 @tool
 def create_contract(input: str = "") -> ToolMessage:

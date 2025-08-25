@@ -1,3 +1,5 @@
+from pathlib import Path
+from urllib.parse import quote, urljoin
 import requests
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field 
@@ -18,6 +20,15 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 TRELLO_API_KEY = os.getenv("TRELLO_API_KEY")
 TRELLO_TOKEN = os.getenv("TRELLO_TOKEN")
 BASE_URL = os.getenv("BASE_URL")
+
+
+def _make_download_link(path_str: str,
+                        base_url: str = "https://20c455cc97ba.ngrok-free.app",
+                        route: str = "/"):  # e.g. "/download/" or "/files/"
+    file_name = Path(path_str).name                # drop any directories
+    base = base_url.rstrip('/') + '/' + route.strip('/') + '/'
+    url = urljoin(base, quote(file_name))          # URL-encode spaces etc.
+    return f"[📥 Download {file_name}]({url})"
 
 
 class trello:
@@ -303,7 +314,7 @@ class trello:
       plt.close()  # Close the plot to free memory
 
     # Create a PDF report
-      pdf_filename = 'task_progress_report.pdf'
+      pdf_filename = './outputs/task_progress_report.pdf'
       c = canvas.Canvas(pdf_filename, pagesize=letter)
       width, height = letter
 
@@ -351,5 +362,7 @@ class trello:
     # Optionally, remove the chart image after saving the PDF
       if os.path.exists(chart_filename):
           os.remove(chart_filename)
+        
+      pdf_filename = _make_download_link(pdf_filename)
       return f"📄 Report generated successfully: {pdf_filename}"
  

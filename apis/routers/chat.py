@@ -36,7 +36,7 @@ async def chat_endpoint(
 ):
     if not message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-
+    
     saved_filename = None
     if attachment is not None and attachment.filename:
         file_ext = os.path.splitext(attachment.filename)[1]
