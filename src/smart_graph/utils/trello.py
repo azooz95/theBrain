@@ -249,6 +249,9 @@ class trello:
         except Exception as e:
             print(f"Error assigning member to card: {e}")
             return False
+        
+    
+
     def generate_task_progress_report(self,board_name :str) -> None:
       """Generate a report of task progress and save it as a PDF."""
       self.board_id=self.select_board(board_name)

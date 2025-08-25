@@ -31,29 +31,29 @@ from src.smart_graph.tools.data_tool import analyze_data
 from src.smart_graph.tools.sql_tool import query_database
 from src.smart_graph.tools.rag_tool import rag_agent  # RAG integration
 
-# ===================== Environment =====================
+#  Environment 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Router LLM (tool-calling)
 LLM_ROUTER = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
-    temperature=0.2,               # low temperature for stable routing
+    temperature=0.2,               
     top_p=0.9,
     convert_system_message_to_human=True,
     api_key=GOOGLE_API_KEY,
 )
 
-# General LLM (non tool-calling) for normal replies (greetings/small-talk/general)
+# General LLM 
 LLM_GENERAL = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
-    temperature=0.6,               # a bit more creative for user-facing text
+    temperature=0.6,               
     top_p=0.9,
     convert_system_message_to_human=True,
     api_key=GOOGLE_API_KEY,
 )
 
-# ===================== Tools Registry =====================
+#  Tools Registry 
 TOOLS_ORDER: List[str] = [
     "create_contract",
     "schedule_meeting",
@@ -76,7 +76,7 @@ tool_node = ToolNode(tools=list(TOOLS_MAP.values()))
 # Bind tools so Gemini returns structured tool calls
 LLM_ROUTER_BOUND = LLM_ROUTER.bind_tools(list(TOOLS_MAP.values()))
 
-# ===================== Trimming / Token counting =====================
+# Trimming / Token counting 
 def _word_token_counter(text: str) -> int:
     return len(str(text).split())
 
@@ -90,7 +90,7 @@ TRIM_CONFIG: Dict[str, object] = {
     "allow_partial": False,
 }
 
-# ===================== Simple Profile Memory =====================
+#  Simple Profile Memory 
 PROFILE_STORE: dict[str, dict] = {}
 
 def extract_and_store_name(text: str, thread_id: str) -> None:
@@ -113,7 +113,7 @@ def profile_system_hint(thread_id: str) -> Optional[str]:
         hints.append(f"User's name is {prof['name']}. Address them by name when appropriate.")
     return " ".join(hints) if hints else None
 
-# ===================== Greetings / Breakers / Switch =====================
+#  Greetings / Breakers / Switch 
 BREAK_WORDS = {
     "cancel", "stop", "exit", "new", "new topic", "switch", "change agent",
     "hi", "hello", "hey", "thanks", "thank you", "ok", "okay"
@@ -173,7 +173,7 @@ def _mentions_other_agent(text: str, current_agent: Optional[str]) -> Optional[s
         if target and target != current_agent:
             return target
 
-    # 3) plain mentions (tool/alias words)
+    # 3) plain mentions 
     lt = t.lower()
     for name in TOOLS_ORDER:
         if name != current_agent and re.search(rf"\b{name}\b", lt):
@@ -188,7 +188,7 @@ def _mentions_other_agent(text: str, current_agent: Optional[str]) -> Optional[s
 
     return None
 
-# ===================== RAG Heuristics + Safeguard =====================
+#  RAG Heuristics + Safeguard 
 FILE_QA_PATTERNS = [
     r"\bi want to ask\b.*\bquestion(s)?\b.*\bfile\b",
     r"\bquestion(s)?\b.*\babout\b.*\bfile\b",
@@ -201,7 +201,7 @@ def _looks_like_file_qa(text: str) -> bool:
     t = text.lower()
     return any(re.search(p, t) for p in FILE_QA_PATTERNS)
 
-# ===================== Reset support for create_contract =====================
+# Reset support for create_contract 
 RESET_CONTRACT_REGEXES = [
     re.compile(r"\b(reset|restart|start\s*over)\s+(contract|create\s*contract)\b", re.I),
     re.compile(r"^/reset\s+contract\b", re.I),
@@ -232,7 +232,7 @@ def _reset_create_contract_session():
     except Exception as e:
         print(f"[WARNING] create_contract session reset failed: {e}")
 
-# ===================== Tool completion detector =====================
+#  Tool completion detector 
 DONE_PATTERNS = [
     r"\bcontract generated\b",
     r"\breport generated\b",
@@ -246,7 +246,7 @@ def _tool_output_is_done(text: str) -> bool:
     t = (text or "").lower()
     return any(re.search(p, t) for p in DONE_PATTERNS)
 
-# ===================== Helpers =====================
+#  Helpers 
 def _llm_reply(messages_for_llm: List[BaseMessage]) -> str:
     """Generate a natural language reply using the general LLM (no tool calling)."""
     try:
@@ -257,7 +257,7 @@ def _llm_reply(messages_for_llm: List[BaseMessage]) -> str:
         print(f"[WARN] _llm_reply error: {e}")
         return "How can I help you next?"
 
-# ===================== Agent Logic =====================
+#  Agent Logic 
 def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> AgentState:
     messages = state["messages"]
     user_input = messages[-1].content.strip() if messages else ""
@@ -272,7 +272,7 @@ def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> A
     # Capture simple profile info
     extract_and_store_name(user_input, thread_id)
 
-    # 0) Greeting short-circuit → generate reply with LLM (no routing)
+    # 0) Greeting short-circuit 
     if _is_greeting(user_input):
         # Build a minimal trimmed history to keep the tone contextual
         try:
@@ -388,7 +388,7 @@ def agent_logic(state: AgentState, config: Optional[RunnableConfig] = None) -> A
     reply = _llm_reply(router_input)
     return {"messages": messages + [AIMessage(content=reply)], "current_agent": None}
 
-# ===================== Respond with tool output =====================
+# Respond with tool output 
 def respond_with_tool(state: AgentState) -> AgentState:
     tool_messages = [m for m in state["messages"] if isinstance(m, ToolMessage)]
     if tool_messages:
@@ -405,14 +405,14 @@ def respond_with_tool(state: AgentState) -> AgentState:
     return {"messages": state["messages"] + [AIMessage(content="⚠️ Tool returned nothing.")],
             "current_agent": state.get("current_agent")}
 
-# ===================== Control Flow =====================
+#  Control Flow 
 def should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
         return "tool"
     return "end"
 
-# ===================== Graph Build =====================
+#  Graph Build 
 checkpointer = InMemorySaver()
 
 graph = StateGraph(AgentState)
