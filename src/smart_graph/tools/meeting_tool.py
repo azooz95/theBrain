@@ -1,16 +1,18 @@
-from langchain_core.tools import tool
-from langchain_core.messages import ToolMessage
+
+
+from typing import Optional
 from src.smart_graph.agents.Smart_Scheduale import MeetingSchedulingAgent
 
-@tool
-def schedule_meeting(input: str) -> ToolMessage:
+
+
+def schedule_meeting(input: str) -> str:
     """
-    Schedules a meeting using user input (stateless).
+    Stateless entry to schedule a meeting from free text.
+    Always returns a short, friendly one-liner.
     """
-    agent = MeetingSchedulingAgent()
-    result = agent.run(input=input)
-    return ToolMessage(
-        content=result,
-        name="schedule_meeting",
-        tool_call_id="tool_call_schedule_meeting"
-    )
+    try:
+        agent = MeetingSchedulingAgent()
+        return agent.run(input=input)
+    except Exception:
+        
+        return "Something went wrong—please try again."
