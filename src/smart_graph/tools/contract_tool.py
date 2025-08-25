@@ -1,5 +1,8 @@
 import os
 from pathlib import Path
+from urllib.parse import quote
+
+from dotenv import load_dotenv
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 from src.smart_graph.agents.Create_Contract import ContractGenerator
@@ -7,6 +10,11 @@ from src.smart_graph.agents.Create_Contract import ContractGenerator
 # In-memory session and field caches
 PLACEHOLDER_CACHE = {}
 SESSION_CACHE = {}
+
+# Load base URL for production (optional)
+load_dotenv("app.env")
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
+
 
 def infer_mode_from_text(text: str) -> str:
     text = text.lower()
@@ -136,7 +144,7 @@ def create_contract(input: str = "") -> ToolMessage:
                     )
 
             else:
-                # ✅ New logic: use placeholder names directly instead of generating LLM questions
+                # ✅ Use placeholder names directly instead of LLM questions
                 placeholders = generator.extract_placeholders()
                 PLACEHOLDER_CACHE[template_path] = placeholders
                 session["awaiting_fields"] = placeholders
