@@ -12,15 +12,13 @@ from langchain_core.messages import ToolMessage
 from src.smart_graph.agents.RagAgent import LangChainRAG, ingest_inputs  # noqa: E402
 
 from dotenv import load_dotenv
-load_dotenv()  
+load_dotenv()
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", r"C:\Users\Omneya\theBrain\uploads")
-
 
 ALLOWED_EXTS = {
     ".pdf", ".docx", ".txt", ".md", ".xlsx", ".xls", ".html", ".htm"
 }
-
 
 SESSION: Dict[str, object] = {
     "waiting_for_upload": False,   # Expecting user to upload/ingest a file
@@ -38,9 +36,8 @@ def _rag() -> LangChainRAG:
     global _RAG
     if _RAG is None:
         _RAG = LangChainRAG(
-            collection_name="rag_collection",
+            collection_name=os.getenv("MILVUS_COLLECTION", "rag_collection"),
             hybrid=True,
-            faiss_dir=os.getenv("FAISS_DIR", "./faiss_index"),
         )
     return _RAG
 
@@ -57,7 +54,6 @@ READY_TO_ASK = "Start to ask any question."
 NO_INDEX_HINT = "I don’t see any ingested documents yet.\n" + ASK_FOR_UPLOAD
 INGEST_EMPTY = (
     "⚠️ No sources to ingest. "
-    
 )
 
 
