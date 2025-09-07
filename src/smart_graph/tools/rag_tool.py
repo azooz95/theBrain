@@ -9,19 +9,24 @@ from typing import Optional, List, Dict
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 
-from src.smart_graph.agents.RagAgent import LangChainRAG, ingest_inputs  # noqa: E402
+# --- Robust import for your updated RAG engine ---
+# Prefer the project path, but gracefully fall back to local file.
+try:
+    from src.smart_graph.agents.RagAgent import LangChainRAG, ingest_inputs  # type: ignore
+except Exception:  # pragma: no cover
+    from RagAgent import LangChainRAG, ingest_inputs  # type: ignore
 
 from dotenv import load_dotenv
-load_dotenv()  
+load_dotenv()
 
+# Where to auto-pick the latest uploaded file from (can be overridden by env)
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", r"C:\Users\Omneya\theBrain\uploads")
-
 
 ALLOWED_EXTS = {
     ".pdf", ".docx", ".txt", ".md", ".xlsx", ".xls", ".html", ".htm"
 }
 
-
+# Simple in-memory session flags/state
 SESSION: Dict[str, object] = {
     "waiting_for_upload": False,   # Expecting user to upload/ingest a file
     "ready": False,                # Documents ingested and ready for Q&A
@@ -34,13 +39,19 @@ _RAG: Optional[LangChainRAG] = None
 
 
 def _rag() -> LangChainRAG:
-    """Create or return a singleton RAG engine."""
+    """
+    Create or return a singleton RAG engine.
+
+    NOTE:
+    Your updated RagAgent.py already disables Milvus connections and
+    gracefully falls back to BM25-only retrieval when Milvus is inactive.
+    No changes are required here beyond constructing the class.  ✅
+    """
     global _RAG
     if _RAG is None:
         _RAG = LangChainRAG(
-            collection_name="rag_collection",
+            collection_name=os.getenv("MILVUS_COLLECTION", "rag_collection"),
             hybrid=True,
-            faiss_dir=os.getenv("FAISS_DIR", "./faiss_index"),
         )
     return _RAG
 
@@ -55,10 +66,7 @@ ASK_FOR_UPLOAD = (
 )
 READY_TO_ASK = "Start to ask any question."
 NO_INDEX_HINT = "I don’t see any ingested documents yet.\n" + ASK_FOR_UPLOAD
-INGEST_EMPTY = (
-    "⚠️ No sources to ingest. "
-    
-)
+INGEST_EMPTY = "⚠️ No sources to ingest."
 
 
 # ==== Heuristics (detect 'ask about a file') ====
@@ -80,7 +88,9 @@ def _seems_file_qa(text: str) -> bool:
 # ==== Uploads folder helpers ====
 
 def _latest_upload_file() -> Optional[Path]:
-    """Return the most recently modified allowed file in UPLOAD_DIR (recursively)."""
+    """
+    Return the most recently modified allowed file in UPLOAD_DIR (recursively).
+    """
     try:
         base = Path(UPLOAD_DIR)
     except Exception:
@@ -97,7 +107,9 @@ def _latest_upload_file() -> Optional[Path]:
 
 
 def _should_ingest(path: Path) -> bool:
-    """Avoid re-ingesting the exact same file (same mtime)."""
+    """
+    Avoid re-ingesting the exact same file (same mtime).
+    """
     try:
         mtime = path.stat().st_mtime
     except FileNotFoundError:
@@ -109,7 +121,7 @@ def _should_ingest(path: Path) -> bool:
 async def _ingest_paths_async(items: List[str]) -> str:
     """
     Bridge to async ingest_inputs(user_input: str, rag: LangChainRAG).
-    We accept multiple paths, join them into a single comma-separated string (as RagAgent expects).
+    We accept multiple paths, join them into a single comma-separated string.
     """
     payload = ", ".join(items)
     n_chunks = await ingest_inputs(payload, _rag())
@@ -119,7 +131,9 @@ async def _ingest_paths_async(items: List[str]) -> str:
 
 
 def _ingest_sync(items: List[str]) -> str:
-    # Run the async bridge in a fresh event loop
+    """
+    Run the async ingestion in a fresh event loop for convenience.
+    """
     return asyncio.run(_ingest_paths_async(items))
 
 
@@ -161,6 +175,9 @@ def rag_agent(input: str) -> ToolMessage:
       2) If user sends 'use latest upload' → ingest most recent file in uploads folder.
       3) If user sends 'ingest: <paths,urls>' → ingest those explicitly.
       4) If ingestion exists → answer questions against the current index.
+
+    Works with the updated RagAgent where Milvus connections are commented out and
+    BM25-only retrieval is available by default until Milvus is re-enabled.
     """
     try:
         text = (input or "").strip()
@@ -236,7 +253,7 @@ def rag_agent(input: str) -> ToolMessage:
                 tool_call_id="tool_call_rag_agent",
             )
 
-        # 4) Q&A with an existing index
+        # 4) Q&A with an existing index (BM25 available even if Milvus is off)
         answer = _rag().answer(text, k=8)
         return ToolMessage(
             content=answer or "No answer generated.",
@@ -245,6 +262,7 @@ def rag_agent(input: str) -> ToolMessage:
         )
 
     except Exception as e:
+        # Friendly, short error (your earlier preference)
         return ToolMessage(
             content=f"❌ RAG error: {e}",
             name="rag_agent",

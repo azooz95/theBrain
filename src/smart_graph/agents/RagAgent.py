@@ -7,7 +7,7 @@ import hashlib
 from typing import List, Optional, Dict
 
 # Set a benign User-Agent if not set, to silence warnings
-os.environ.setdefault("USER_AGENT", "UpdatedRag/1.0 (Windows; LangChain; FAISS)")
+os.environ.setdefault("USER_AGENT", "UpdatedRag/1.0 (Windows; LangChain; Milvus)")
 
 from dotenv import load_dotenv
 
@@ -27,8 +27,9 @@ from langchain_community.document_loaders import (
     TextLoader,
 )
 
-# Vector store (Local)
-from langchain_community.vectorstores import FAISS
+# Vector store (Milvus)
+# NOTE: We keep the import to avoid refactors; actual connection calls are commented out below.
+from langchain_community.vectorstores import Milvus  # noqa: F401
 
 # Google GenAI (Embeddings + Chat)
 from langchain_google_genai import (
@@ -39,16 +40,12 @@ from langchain_google_genai import (
 # BM25 (lexical retriever)
 from langchain_community.retrievers import BM25Retriever
 
-
-
 # Logging
-
 logger = logging.getLogger("rag_app")
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", "%H:%M:%S"))
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
-
 
 
 # Utilities
@@ -112,7 +109,6 @@ def rr_fusion(rank_lists: List[List[Document]], k: int = 8, k_rr: int = 60) -> L
     return [doc for _, doc in fused][:k]
 
 
-
 # Typed loaders
 
 class Excelsheet:
@@ -157,7 +153,7 @@ class Web:
         return docs
 
 
-# File type detection 
+# File type detection
 
 class FileType:
     EXCEL = "excel"
@@ -219,22 +215,19 @@ def load_one_path(kind: str, path: str) -> List[Document]:
     return docs
 
 
-
-# RAG Core  — FAISS backend
-
+# RAG Core — Milvus backend (connections commented)
 class LangChainRAG:
     """
     Core RAG engine:
       - Embeddings: Google Generative AI Embeddings (embedding-001)
-      - Vector store: FAISS (local, persisted to FAISS_DIR)
+      - Vector store: Milvus (remote / server)  [connection calls commented]
       - Optional BM25 lexical retriever
       - Answer generation: Gemini Flash
     """
     def __init__(
         self,
-        collection_name: str = "rag_collection",
+        collection_name: Optional[str] = None,
         hybrid: bool = True,
-        faiss_dir: Optional[str] = None,
     ):
         load_dotenv(override=True)
 
@@ -252,13 +245,51 @@ class LangChainRAG:
             logger.warning("[llm] gemini-2.0-flash unavailable; falling back to gemini-1.5-flash")
             self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
 
-        # FAISS persistence directory
-        self.faiss_dir = faiss_dir or os.getenv("FAISS_DIR", "./faiss_index")
-        os.makedirs(self.faiss_dir, exist_ok=True)
+        # Milvus env config kept for later use
+        self.collection_name = collection_name or os.getenv("MILVUS_COLLECTION", "rag_collection")
 
-        # Vector store (created on first ingest; try load if exists)
-        self.vector_store: Optional[FAISS] = None
-        self._try_load_faiss()
+        secure = str(os.getenv("MILVUS_SECURE", "false")).lower() == "true"
+        tls_ca = os.getenv("MILVUS_TLS_CA_CERT", "").strip() or None
+
+        self.connection_args = {
+            "host": os.getenv("MILVUS_HOST", "localhost"),
+            "port": os.getenv("MILVUS_PORT", "19530"),
+            # These may be optional depending on your deployment:
+            "user": os.getenv("MILVUS_USER") or None,
+            "password": os.getenv("MILVUS_PASSWORD") or None,
+            "secure": secure,
+            "tls_ca_cert": tls_ca,
+        }
+
+        # Index/search params from .env (with safe defaults)
+        import json
+        self.metric_type = os.getenv("MILVUS_METRIC_TYPE", "COSINE")
+        index_type = os.getenv("MILVUS_INDEX_TYPE", "IVF_FLAT")
+
+        try:
+            index_param_json = os.getenv("MILVUS_INDEX_PARAM_JSON", '{"nlist":1024}')
+            self.index_params = {
+                "index_type": index_type,
+                "metric_type": self.metric_type,
+                "params": json.loads(index_param_json),
+            }
+        except Exception:
+            logger.warning("[milvus] Invalid MILVUS_INDEX_PARAM_JSON. Falling back to {'nlist':1024}.")
+            self.index_params = {"index_type": index_type, "metric_type": self.metric_type, "params": {"nlist": 1024}}
+
+        try:
+            search_param_json = os.getenv("MILVUS_SEARCH_PARAM_JSON", '{"nprobe":16}')
+            self.search_params = {
+                "metric_type": self.metric_type,
+                "params": json.loads(search_param_json),
+            }
+        except Exception:
+            logger.warning("[milvus] Invalid MILVUS_SEARCH_PARAM_JSON. Falling back to {'nprobe':16}.")
+            self.search_params = {"metric_type": self.metric_type, "params": {"nprobe": 16}}
+
+        # Vector store handle (kept but not connected)
+        self.vector_store: Optional[Milvus] = None  # type: ignore[assignment]
+        self._try_load_milvus_collection()
 
         self.hybrid_enabled = hybrid
         self._bm25_retriever: Optional[BM25Retriever] = None
@@ -277,36 +308,66 @@ class LangChainRAG:
                 ]
             )
 
-    def _try_load_faiss(self):
+    def _try_load_milvus_collection(self):
+        """
+        Try to bind to an existing Milvus collection.
+        NOTE: The actual connection is intentionally commented out for now.
+        Re-enable by uncommenting the block below.
+        """
         try:
-            self.vector_store = FAISS.load_local(
-                self.faiss_dir,
-                self.embeddings,
-                allow_dangerous_deserialization=True
-            )
-            logger.info(f"[faiss] Loaded existing index from {self.faiss_dir}")
+            # --- Milvus connection commented out ---
+            # self.vector_store = Milvus.from_existing_collection(
+            #     embedding=self.embeddings,
+            #     collection_name=self.collection_name,
+            #     connection_args={k: v for k, v in self.connection_args.items() if v not in (None, "", False)},
+            #     search_params=self.search_params,
+            # )
+            # logger.info(f"[milvus] Connected to existing collection '{self.collection_name}'.")
+            self.vector_store = None
+            logger.info("[milvus] Connection skipped (commented out).")
         except Exception as e:
-            logger.info(f"[faiss] No existing index to load ({e}). Will create on first ingest.")
+            logger.info(f"[milvus] No existing collection '{self.collection_name}' yet ({e}). Will create on first ingest.")
+            self.vector_store = None
 
-    def _save_faiss(self):
-        if self.vector_store is not None:
-            self.vector_store.save_local(self.faiss_dir)
-            logger.info(f"[faiss] Saved index to {self.faiss_dir}")
+    def _create_or_attach_collection_with_docs(self, chunks: List[Document]):
+        """
+        Create the collection (if absent) and insert docs.
+        NOTE: The actual creation/insert is commented out.
+        """
+        # --- Milvus creation commented out ---
+        # self.vector_store = Milvus.from_documents(
+        #     documents=chunks,
+        #     embedding=self.embeddings,
+        #     collection_name=self.collection_name,
+        #     connection_args={k: v for k, v in self.connection_args.items() if v not in (None, "", False)},
+        #     index_params=self.index_params,
+        #     search_params=self.search_params,
+        # )
+        # logger.info(f"[milvus] Created/updated collection '{self.collection_name}' and inserted {len(chunks)} chunks.")
+        self.vector_store = None
+        logger.info("[milvus] Skipped creating collection (commented out).")
 
     def ingest_documents(self, docs: List[Document], chunk_size=1500, chunk_overlap=200) -> int:
         if not docs:
             logger.warning("[ingest] No docs to ingest.")
             return 0
+
         chunks = chunk_documents(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         chunks = tag_sections(chunks)
         for d in chunks:
             d.metadata.setdefault("languages", [])
+
+        # --- Milvus ingestion commented out ---
         if self.vector_store is None:
-            self.vector_store = FAISS.from_documents(chunks, self.embeddings)
+            logger.info("[ingest] Skipping Milvus create/add (connection commented out).")
+            # self._create_or_attach_collection_with_docs(chunks)
         else:
-            self.vector_store.add_documents(chunks)
-        self._save_faiss()
-        logger.info(f"[ingest] Inserted {len(chunks)} chunks into FAISS.")
+            # If you re-enable Milvus, you can add docs like this:
+            # self.vector_store.add_documents(chunks)
+            # logger.info(f"[ingest] Inserted {len(chunks)} chunks into Milvus collection '{self.collection_name}'.")
+            pass
+
+        # Always (re)build BM25 so the system works without Milvus
         if self.hybrid_enabled:
             self._bm25_retriever = BM25Retriever.from_documents(chunks)
             self._bm25_retriever.k = 8
@@ -314,17 +375,43 @@ class LangChainRAG:
         return len(chunks)
 
     def retrieve(self, query: str, k: int = 8) -> List[Document]:
-        if self.vector_store is None:
-            logger.warning("[retrieve] Vector store empty. Ingest first.")
-            return []
-        vec_docs = self.vector_store.similarity_search(query, k=k)
+        """
+        Retrieve using Milvus (if enabled) and/or BM25. When Milvus is inactive,
+        we fall back to BM25-only so the system remains usable.
+        """
+        vec_docs: List[Document] = []
+
+        # Milvus path (inactive unless you uncomment connections)
+        if self.vector_store is not None:
+            try:
+                vec_docs = self.vector_store.similarity_search(query, k=k)  # type: ignore[attr-defined]
+            except Exception as e:
+                logger.warning(f"[retrieve] Milvus similarity_search failed: {e}")
+                vec_docs = []
+
+        # BM25 path
+        bm25_docs: List[Document] = []
         if self.hybrid_enabled and self._bm25_retriever is not None:
-            bm25_docs = self._bm25_retriever.invoke(query)
+            try:
+                bm25_docs = self._bm25_retriever.invoke(query)
+            except Exception as e:
+                logger.warning(f"[retrieve] BM25 failed: {e}")
+                bm25_docs = []
+
+        # Fusion logic
+        if vec_docs and bm25_docs:
             fused = rr_fusion([vec_docs, bm25_docs], k=k, k_rr=60)
             logger.info(f"[retrieve] vec={len(vec_docs)}, bm25={len(bm25_docs)}, fused={len(fused)}")
             return fused
-        logger.info(f"[retrieve] vec_only={len(vec_docs)}")
-        return vec_docs
+        if vec_docs:
+            logger.info(f"[retrieve] vec_only={len(vec_docs)}")
+            return vec_docs[:k]
+        if bm25_docs:
+            logger.info(f"[retrieve] bm25_only={len(bm25_docs)}")
+            return bm25_docs[:k]
+
+        logger.warning("[retrieve] No retrievers available. Ingest first.")
+        return []
 
     def generate(self, question: str, docs: List[Document]) -> str:
         if not docs:
@@ -342,7 +429,7 @@ class LangChainRAG:
         return self.generate(question, ctx)
 
 
-# Ingestion orchestration 
+# Ingestion orchestration
 
 async def ingest_inputs(user_input: str, rag: LangChainRAG) -> int:
     """
@@ -381,9 +468,8 @@ async def ingest_inputs(user_input: str, rag: LangChainRAG) -> int:
     return n_chunks
 
 
-
-# CLI
-""" 
+# CLI (kept commented, as in your original)
+"""
 def main():
     load_dotenv(override=True)
 
@@ -391,19 +477,16 @@ def main():
         print("ERROR: set GOOGLE_API_KEY in .env or environment and rerun.")
         sys.exit(1)
 
-    # Initialize RAG engine (FAISS)
+    # Initialize RAG engine (Milvus)
     rag = LangChainRAG(
-        collection_name="rag_collection",
+        collection_name=os.getenv("MILVUS_COLLECTION", "rag_collection"),
         hybrid=True,
-        faiss_dir=os.getenv("FAISS_DIR", "./faiss_index"),
     )
 
-   
     print("Enter a path/URL to ingest (you can provide multiple, comma-separated).")
     print("Examples:")
     print("  ./data")
     print("  ./data/report.pdf, https://example.com/page")
- 
 
     # 1) Collect inputs for ingestion
     try:
@@ -456,4 +539,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nInterrupted by user.") """
+        print("\nInterrupted by user.")
+"""
