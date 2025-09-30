@@ -12,9 +12,9 @@ from langchain_core.messages import ToolMessage
 # --- Robust import for your updated RAG engine ---
 # Prefer the project path, but gracefully fall back to local file.
 try:
-    from src.smart_graph.agents.RagAgent import LangChainRAG, ingest_inputs  # type: ignore
+    from src.smart_graph.agents.rag_agent import LangChainRag, ingest_inputs  # type: ignore
 except Exception:  # pragma: no cover
-    from RagAgent import LangChainRAG, ingest_inputs  # type: ignore
+    from rag_agent import LangChainRag, ingest_inputs  # type: ignore
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -35,21 +35,21 @@ SESSION: Dict[str, object] = {
 }
 
 # Singleton RAG instance
-_RAG: Optional[LangChainRAG] = None
+_RAG: Optional[LangChainRag] = None
 
 
-def _rag() -> LangChainRAG:
+def _rag() -> LangChainRag:
     """
     Create or return a singleton RAG engine.
 
     NOTE:
-    Your updated RagAgent.py already disables Milvus connections and
+    Your updated rag_agent.py already disables Milvus connections and
     gracefully falls back to BM25-only retrieval when Milvus is inactive.
     No changes are required here beyond constructing the class.  ✅
     """
     global _RAG
     if _RAG is None:
-        _RAG = LangChainRAG(
+        _RAG = LangChainRag(
             collection_name=os.getenv("MILVUS_COLLECTION", "rag_collection"),
             hybrid=True,
         )
@@ -176,7 +176,7 @@ def rag_agent(input: str) -> ToolMessage:
       3) If user sends 'ingest: <paths,urls>' → ingest those explicitly.
       4) If ingestion exists → answer questions against the current index.
 
-    Works with the updated RagAgent where Milvus connections are commented out and
+    Works with the updated rag_agent where Milvus connections are commented out and
     BM25-only retrieval is available by default until Milvus is re-enabled.
     """
     try:
