@@ -70,7 +70,7 @@ async def chat_endpoint(
         with open(file_path, "wb") as f:
             shutil.copyfileobj(attachment.file, f)
 
-        print(f"📁 Uploaded file saved to: {file_path}")
+        print(f"📁 ed file saved to: {file_path}")
 
     user_input = message
     inputs = {"messages": [HumanMessage(content=user_input)]}
