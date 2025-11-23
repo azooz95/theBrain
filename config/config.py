@@ -8,25 +8,27 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-GOOGLE_CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
-
 @dataclass
 class FilePaths():
     script_path: str = Path(__file__).resolve()
-    model_folder: str = script_path.parents[1] / 'src/assests/models/'
+    model_folder: str = script_path.parents[1] / 'src/assets/models/'
     paper_seg_model : str = script_path.parents[1] / model_folder / 'similified_model_paper_seg.onnx'
-    data_base_path: str = script_path.parents[1] / 'src/assests/data/'
+    data_base_path: str = script_path.parents[1] / 'src/assets/data/'
     milvus_db_path: str = script_path.parents[1] / 'db/milvus_demo.db/'
-    google_crenditials_path: str = script_path.parents[1] / GOOGLE_CREDENTIALS_PATH
-    google_token_path: str = script_path.parents[1] / 'src/assets/google workspace/token.json'
+    google_credentials_path: str = script_path.parents[1] / 'src/assets/google workspace/credentials.json'
+    google_token_path: str = script_path.parents[1] / 'src/assets/google workspace'
+    microsoft_token_dir: str = script_path.parents[1] / 'src/assets/microsoft_tokens'
+    microsoft_flow_dir: str = script_path.parents[1] / 'src/assets/microsoft_flows'
 
     def __post_init__(self):
         self.script_path = str(self.script_path)
         self.paper_seg_model = str(self.paper_seg_model)
         self.data_base_path = str(self.data_base_path)
         self.milvus_db_path = str(self.milvus_db_path)
-        self.google_crenditials_path = str(self.google_crenditials_path)
+        self.google_credentials_path = str(self.google_credentials_path)
         self.google_token_path = str(self.google_token_path)
+        self.microsoft_token_dir = str(self.microsoft_token_dir)
+        self.microsoft_flow_dir = str(self.microsoft_flow_dir)
 
 
 @dataclass

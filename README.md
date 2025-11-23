@@ -12,15 +12,21 @@ let your office talk
 
 ## project structure
 
-to install dependencies
+To install dependencies
 
 ```
 pip install -e .
 ```
 
-run the following code in the terminal for linux
+Run the following code in the terminal for linux
 ```
 export PYTHONPATH=$(pwd)
+```
+
+Run the following for Windows
+
+```
+set PYTHONPATH=%cd%
 ```
 
 you can find any model in this [google drive link](https://drive.google.com/drive/folders/1QhqoEk-XC5qz1uP_bZHgE-0sA0Hihu0s?usp=sharing) to download

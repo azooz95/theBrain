@@ -20,6 +20,8 @@ from starlette.websockets import WebSocketState
 
 from apis.token_generator import get_current_user, verify_token
 from src.smart_graph.graph.main_graph import app as graph_app
+from src.smart_graph.graph.agentic_graph import Tools, AgenticGraph, TokensTracker
+from db.sql import utils
 
 app = FastAPI()
 router = APIRouter()
@@ -27,6 +29,16 @@ router = APIRouter()
 # Uploads directory
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+USER_THREADS = {}
+TRACKER = TokensTracker()
+
+def get_user_thread(user_id: str) -> str:
+    """Retrieve existing thread or create new one."""
+    if user_id not in USER_THREADS:
+        USER_THREADS[user_id] = str(uuid4())
+    return USER_THREADS[user_id]
+
 
 
 def _inject_download_link(text: str):
@@ -51,8 +63,48 @@ def _inject_download_link(text: str):
     return new_text, download_path
 
 
-# REST API endpoint (POST /chat)
 @router.post("/chat")
+async def chat_endpoint(
+    message: str = Form(...),
+    attachment: UploadFile = File(None),
+    user_info: str = Depends(get_current_user)
+):
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    file_path = None
+    if attachment is not None and attachment.filename:
+        file_ext = os.path.splitext(attachment.filename)[1]
+        saved_filename = f"{uuid4().hex}{file_ext}"
+        file_path = os.path.join(UPLOAD_DIR, saved_filename)
+
+        with open(file_path, "wb") as f:
+            shutil.copyfileobj(attachment.file, f)
+
+    user_thread = get_user_thread(user_info["email"])
+
+    tools_instance = Tools(google_token=user_info["email"], 
+                           o365_flow=user_info["email"], 
+                           o365_token=user_info["email"])
+    
+    tools_list = tools_instance.get_tools()
+    agent_graph = AgenticGraph(tools=tools_list, thread_id=user_thread)
+    agent = agent_graph.build_agent()
+
+    parsing_instance = AgenticGraph.run(agent=agent, 
+                                    config=agent_graph.get_config, 
+                                    inputs=message, 
+                                    attachment=file_path,
+                                    tracker=TRACKER)
+    
+    return {
+        "response": parsing_instance,
+        "user_id": user_info,
+        "uploaded_file": file_path,
+    }
+
+# REST API endpoint (POST /chat)
+@router.post("/old_chat")
 async def chat_endpoint(
     message: str = Form(...),
     attachment: UploadFile = File(None),
@@ -72,9 +124,17 @@ async def chat_endpoint(
 
         print(f"📁 ed file saved to: {file_path}")
 
-    user_input = message
+    attachments = {}
+    if attachment is not None:
+        attachments = {
+            'file_name': attachment.filename,
+            "file_path": file_path
+        }
+
+    user_thread = get_user_thread(user_info["email"])
+    user_input = message + " attached file: " + (f"{attachments}" if attachment else "No attachment")
     inputs = {"messages": [HumanMessage(content=user_input)]}
-    config = {"configurable": {"thread_id": "1"}}
+    config = {"configurable": {"thread_id": user_thread}}
     last_response = None
     for output in graph_app.stream(inputs, config):
         for _, val in output.items():

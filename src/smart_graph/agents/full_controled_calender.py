@@ -19,7 +19,9 @@ class MeetingSchedulingAgent:
 
     def initialize_google_calendar(self) -> Any:
         flow = InstalledAppFlow.from_client_secrets_file(file_paths.google_crenditials_path, self.SCOPES)
-        creds = flow.run_local_server(port=3000)
+        print("Redirect URI being used:", flow.redirect_uri)
+        creds = flow.run_local_server(port=3000, timeout_seconds=10)
+
         return build('calendar', 'v3', credentials=creds)
 
     def run(self, input: str) -> str:

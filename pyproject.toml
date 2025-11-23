@@ -44,7 +44,6 @@ dependencies = [
     "pytest-mock",
     "sendgrid",
     "reportlab",
-    "timezonefinder",
     "geopy==2.4.1",
     "google-generativeai==0.8.5",
     "slack_sdk==3.35.0",
