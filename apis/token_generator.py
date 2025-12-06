@@ -10,7 +10,7 @@ app = FastAPI()
 SECRET_KEY = "JWT_brain_BE_SECRETTS"
 FAKE_USER = {
     "username": "admin",
-    "email": "aziz.alhaj30@gmail.com",
+    "email": "aziz.alhaj@gmail.com",
     "user_id": "1"
 }
 

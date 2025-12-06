@@ -7,6 +7,8 @@ from langchain_community.tools.office365.create_draft_message import (
 )
 from langchain_core.messages.ai import AIMessage
 
+from langchain_core.messages.system import SystemMessage
+from langchain_core.messages.tool import ToolMessage
 from langchain_community.agent_toolkits.office365.toolkit import O365Toolkit
 import os
 from dotenv import load_dotenv
@@ -14,7 +16,7 @@ from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from typing_extensions import TypedDict, Any, Optional
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.graph.state import CompiledStateGraph
 
 from O365 import Account
@@ -37,6 +39,16 @@ memory = InMemorySaver()
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
+
+O365SearchEmails.model_rebuild()
+O365SearchEvents.model_rebuild()
+O365SendEvent.model_rebuild()
+O365SendMessage.model_rebuild()
+O365CreateDraftMessage.model_rebuild()
+O365CreateTeamsMeeting.model_rebuild()
+GoogleCreateMeet.model_rebuild()
+O365Toolkit.model_rebuild()
+
 class Tools():
 
     def __init__(self, google_token: str = 'default', o365_flow: str = 'default', o365_token: str = 'default') -> None:
@@ -46,14 +58,6 @@ class Tools():
         self.microsoft_dir = file_paths.microsoft_token_dir
 
         self.account : Optional[Account] = microsoft_run_local_server(port=5000, user=o365_token)
-
-        O365SearchEmails.model_rebuild()
-        O365SearchEvents.model_rebuild()
-        O365SendEvent.model_rebuild()
-        O365SendMessage.model_rebuild()
-        O365CreateDraftMessage.model_rebuild()
-        O365CreateTeamsMeeting.model_rebuild()
-        GoogleCreateMeet.model_rebuild()
 
         self.tools = []
     
@@ -92,8 +96,7 @@ class Tools():
         microsoft_tools = toolkit.get_tools()
         tools = microsoft_tools + [GoogleCalendarToolkit(path_token=self.google_token_path), 
                          GoogleCreateMeet(path_token=self.google_token_path), 
-                         O365CreateTeamsMeeting(), 
-                         read_file] + self.tools
+                         O365CreateTeamsMeeting()] + self.tools
         return tools
 
 class AgentState(MessagesState):

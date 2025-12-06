@@ -31,6 +31,8 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 USER_THREADS = {}
+AGENTS = {}
+
 TRACKER = TokensTracker()
 
 def get_user_thread(user_id: str) -> str:
@@ -62,7 +64,6 @@ def _inject_download_link(text: str):
     new_text = text.replace(m.group(0), f"{prefix}{anchor}")
     return new_text, download_path
 
-
 @router.post("/chat")
 async def chat_endpoint(
     message: str = Form(...),
@@ -88,15 +89,22 @@ async def chat_endpoint(
                            o365_token=user_info["email"])
     
     tools_list = tools_instance.get_tools()
-    agent_graph = AgenticGraph(tools=tools_list, thread_id=user_thread)
-    agent = agent_graph.build_agent()
-
-    parsing_instance = AgenticGraph.run(agent=agent, 
+    
+    # if user_info not in AGENTS:
+    if user_info["email"] not in AGENTS:
+        agent_graph = AgenticGraph(tools=tools_list, thread_id=user_thread)
+        agent = agent_graph.build_agent()
+        print(agent_graph.get_config)
+        AGENTS[user_info["email"]] = (agent_graph, agent)
+    else: 
+        agent_graph, agent = AGENTS[user_info["email"]]
+        
+    parsing_instance = agent_graph.run(agent=agent, 
                                     config=agent_graph.get_config, 
                                     inputs=message, 
                                     attachment=None,
                                     tracker=TRACKER)
-    
+        
     return {
         "response": parsing_instance,
         "user_id": user_info,
