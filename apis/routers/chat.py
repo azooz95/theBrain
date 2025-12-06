@@ -94,7 +94,6 @@ async def chat_endpoint(
     if user_info["email"] not in AGENTS:
         agent_graph = AgenticGraph(tools=tools_list, thread_id=user_thread)
         agent = agent_graph.build_agent()
-        print(agent_graph.get_config)
         AGENTS[user_info["email"]] = (agent_graph, agent)
     else: 
         agent_graph, agent = AGENTS[user_info["email"]]
