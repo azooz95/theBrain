@@ -19,9 +19,9 @@ from langchain_core.messages import HumanMessage
 from starlette.websockets import WebSocketState
 
 from apis.token_generator import get_current_user, verify_token
-from src.smart_graph.graph.main_graph import app as graph_app
+# from src.smart_graph.graph.main_graph import app as graph_app
 from src.smart_graph.graph.agentic_graph import Tools, AgenticGraph, TokensTracker
-from db.sql import utils
+# from db.sql import utils
 
 app = FastAPI()
 router = APIRouter()
@@ -76,10 +76,10 @@ async def chat_endpoint(
     if attachment is not None and attachment.filename:
         file_ext = os.path.splitext(attachment.filename)[1]
         saved_filename = f"{uuid4().hex}{file_ext}"
-        file_path = os.path.join(UPLOAD_DIR, saved_filename)
+        # file_path = os.path.join(UPLOAD_DIR, saved_filename)
 
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(attachment.file, f)
+        # with open(file_path, "wb") as f:
+        #     shutil.copyfileobj(attachment.file, f)
 
     user_thread = get_user_thread(user_info["email"])
 
@@ -94,7 +94,7 @@ async def chat_endpoint(
     parsing_instance = AgenticGraph.run(agent=agent, 
                                     config=agent_graph.get_config, 
                                     inputs=message, 
-                                    attachment=file_path,
+                                    attachment=None,
                                     tracker=TRACKER)
     
     return {
@@ -104,62 +104,62 @@ async def chat_endpoint(
     }
 
 # REST API endpoint (POST /chat)
-@router.post("/old_chat")
-async def chat_endpoint(
-    message: str = Form(...),
-    attachment: UploadFile = File(None),
-    user_info: str = Depends(get_current_user)
-):
-    if not message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
+# @router.post("/old_chat")
+# async def chat_endpoint(
+#     message: str = Form(...),
+#     attachment: UploadFile = File(None),
+#     user_info: str = Depends(get_current_user)
+# ):
+#     if not message.strip():
+#         raise HTTPException(status_code=400, detail="Message cannot be empty")
     
-    saved_filename = None
-    if attachment is not None and attachment.filename:
-        file_ext = os.path.splitext(attachment.filename)[1]
-        saved_filename = f"{uuid4().hex}{file_ext}"
-        file_path = os.path.join(UPLOAD_DIR, saved_filename)
+#     saved_filename = None
+#     if attachment is not None and attachment.filename:
+#         file_ext = os.path.splitext(attachment.filename)[1]
+#         saved_filename = f"{uuid4().hex}{file_ext}"
+#         file_path = os.path.join(UPLOAD_DIR, saved_filename)
 
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(attachment.file, f)
+#         with open(file_path, "wb") as f:
+#             shutil.copyfileobj(attachment.file, f)
 
-        print(f"📁 ed file saved to: {file_path}")
+#         print(f"📁 ed file saved to: {file_path}")
 
-    attachments = {}
-    if attachment is not None:
-        attachments = {
-            'file_name': attachment.filename,
-            "file_path": file_path
-        }
+#     attachments = {}
+#     if attachment is not None:
+#         attachments = {
+#             'file_name': attachment.filename,
+#             "file_path": file_path
+#         }
 
-    user_thread = get_user_thread(user_info["email"])
-    user_input = message + " attached file: " + (f"{attachments}" if attachment else "No attachment")
-    inputs = {"messages": [HumanMessage(content=user_input)]}
-    config = {"configurable": {"thread_id": user_thread}}
-    last_response = None
-    for output in graph_app.stream(inputs, config):
-        for _, val in output.items():
-            if isinstance(val, dict) and "messages" in val:
-                messages = val["messages"]
-                if isinstance(messages, list) and messages:
-                    response = messages[-1].content
-                    if response and response != last_response:
-                        last_response = response
+#     user_thread = get_user_thread(user_info["email"])
+#     user_input = message + " attached file: " + (f"{attachments}" if attachment else "No attachment")
+#     inputs = {"messages": [HumanMessage(content=user_input)]}
+#     config = {"configurable": {"thread_id": user_thread}}
+#     last_response = None
+#     for output in graph_app.stream(inputs, config):
+#         for _, val in output.items():
+#             if isinstance(val, dict) and "messages" in val:
+#                 messages = val["messages"]
+#                 if isinstance(messages, list) and messages:
+#                     response = messages[-1].content
+#                     if response and response != last_response:
+#                         last_response = response
 
-                        # Inject a clickable download link and expose raw URL too
-                        rendered_response, download_url = _inject_download_link(response)
+#                         # Inject a clickable download link and expose raw URL too
+#                         rendered_response, download_url = _inject_download_link(response)
 
-                        return {
-                            "response": rendered_response or response,
-                            "user_id": user_info,
-                            "uploaded_file": saved_filename,
-                            **({"download_url": download_url} if download_url else {}),
-                        }
+#                         return {
+#                             "response": rendered_response or response,
+#                             "user_id": user_info,
+#                             "uploaded_file": saved_filename,
+#                             **({"download_url": download_url} if download_url else {}),
+#                         }
 
-    return {
-        "response": f"Received message: {message}",
-        "user_id": user_info,
-        "uploaded_file": saved_filename,
-    }
+#     return {
+#         "response": f"Received message: {message}",
+#         "user_id": user_info,
+#         "uploaded_file": saved_filename,
+#     }
 
 
 # Download endpoint to serve generated PDFs/DOCs

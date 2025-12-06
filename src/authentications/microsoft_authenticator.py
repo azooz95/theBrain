@@ -14,6 +14,10 @@ load_dotenv()
 
 client_id = os.getenv("O365_CLIENT_ID")
 client_secret = os.getenv("O365_CLIENT_SECRET")
+
+os.environ['CLIENT_ID'] = client_id
+os.environ['CLIENT_SECRET'] = client_secret
+
 credentials = (client_id, client_secret)
 
 SCOPES = [

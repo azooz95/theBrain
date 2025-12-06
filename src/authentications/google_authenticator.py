@@ -205,9 +205,32 @@ class GoogleAccount:
 _google_accounts: dict[str, GoogleAccount] = {}
 _google_account_lock = threading.Lock()
 
-def google_authenticate(token_path: str) -> GoogleAccount:
+# def google_authenticate(token_path: str) -> GoogleAccount:
+#     with _google_account_lock:
+#         # Return existing session for same user/token
+#         if token_path in _google_accounts:
+#             return _google_accounts[token_path]
+
+#         scopes = ["https://www.googleapis.com/auth/calendar"]
+#         google_account = GoogleAccount(
+#             token_path=token_path,
+#             credentials_path=file_paths.google_credentials_path,
+#             scopes=scopes,
+#             service_name="calendar",
+#             version="v3"
+#         )
+
+#         # Run authentication synchronously for safety
+#         google_account.authenticate()
+
+#         # Store instance for re-use
+#         _google_accounts[token_path] = google_account
+#         return google_account
+
+
+def google_authenticate(token_path: str) -> 'GoogleAccount':
     with _google_account_lock:
-        # Return existing session for same user/token
+        # Return existing instance if already created
         if token_path in _google_accounts:
             return _google_accounts[token_path]
 
@@ -220,13 +243,16 @@ def google_authenticate(token_path: str) -> GoogleAccount:
             version="v3"
         )
 
-        # Run authentication synchronously for safety
-        google_account.authenticate()
+        # Run authentication in a separate thread (non-blocking)
+        auth_thread = threading.Thread(target=google_account.authenticate, daemon=True)
+        auth_thread.start()
 
-        # Store instance for re-use
+        # Store instance immediately for reuse
         _google_accounts[token_path] = google_account
         return google_account
+
     
+
 
 if __name__ == "__main__":
     google_authenticate('token.json')
